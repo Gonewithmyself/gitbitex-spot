@@ -92,9 +92,16 @@ func NewEngine(product *models.Product, orderReader OrderReader, logStore LogSto
 }
 
 func (e *Engine) Start() {
+	// 读取下单
 	go e.runFetcher()
+
+	// 进行撮合
 	go e.runApplier()
+
+	// 发布撮合信息
 	go e.runCommitter()
+
+	// orderbook 快照
 	go e.runSnapshots()
 }
 

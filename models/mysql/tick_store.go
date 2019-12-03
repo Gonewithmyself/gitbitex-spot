@@ -16,10 +16,11 @@ package mysql
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/jinzhu/gorm"
-	"strings"
-	"time"
 )
 
 func (s *Store) GetTicksByProductId(productId string, granularity int64, limit int) ([]*models.Tick, error) {
@@ -44,14 +45,33 @@ func (s *Store) AddTicks(ticks []*models.Tick) error {
 	if len(ticks) == 0 {
 		return nil
 	}
+
+	// ticks = uniqueTicks(ticks)
 	var valueStrings []string
 	for _, tick := range ticks {
-		valueString := fmt.Sprintf("('%v','%v', %v, %v, %v, %v, %v, %v, %v,%v,%v)",
-			time.Now(), tick.ProductId, tick.Granularity, tick.Time, tick.Open, tick.Low, tick.High, tick.Close,
+		valueString := fmt.Sprintf("(%v,'%v', %v, %v, %v, %v, %v, %v, %v,%v,%v)",
+			"CURRENT_TIMESTAMP", tick.ProductId, tick.Granularity, tick.Time, tick.Open, tick.Low, tick.High, tick.Close,
 			tick.Volume, tick.LogOffset, tick.LogSeq)
 		valueStrings = append(valueStrings, valueString)
 	}
-	sql := fmt.Sprintf("REPLACE INTO g_tick (created_at, product_id,granularity,time,open,low,high,close,"+
-		"volume,log_offset,log_seq) VALUES %s", strings.Join(valueStrings, ","))
+	sql := fmt.Sprintf("insert INTO g_tick (created_at, product_id,granularity,time,open,low,high,close,"+
+		"volume,log_offset,log_seq) VALUES %s"+
+		"ON DUPLICATE KEY UPDATE `volume`=VALUES(`volume`)", strings.Join(valueStrings, ","))
 	return s.db.Exec(sql).Error
+}
+
+func uniqueTicks(ticks []*models.Tick) []*models.Tick {
+	if len(ticks) == 1 {
+		return ticks
+	}
+
+	m := map[string]struct{}{}
+	list := make([]*models.Tick, 0, len(ticks))
+	for i := range ticks {
+		k := ticks[i].ProductId + strconv.Itoa(int(ticks[i].Time)) + strconv.Itoa(int(ticks[i].Granularity))
+		if _, ok := m[k]; !ok {
+			list = append(list, ticks[i])
+		}
+	}
+	return list
 }

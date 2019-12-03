@@ -34,7 +34,7 @@ func main() {
 	}
 
 	go func() {
-		log.Info(http.ListenAndServe("localhost:6060", nil))
+		log.Info(http.ListenAndServe("localhost:6061", nil))
 	}()
 
 	go models.NewBinLogStream().Start()

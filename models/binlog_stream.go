@@ -70,6 +70,7 @@ func (s *BinLogStream) OnRow(e *canal.RowsEvent) error {
 		}
 
 	case "g_account":
+		log.Println("---- onrow")
 		var n = 0
 		if e.Action == "update" {
 			n = 1

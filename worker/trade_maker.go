@@ -80,6 +80,7 @@ func (t *TradeMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
 	}
 }
 
+// 保存撮合日志
 func (t *TradeMaker) runFlusher() {
 	var trades []*models.Trade
 

@@ -1,3 +1,6 @@
+DROP DATABASE  IF  EXISTS db_spot;
+CREATE DATABASE db_spot;
+USE db_spot;
 CREATE TABLE `g_account` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `created_at` timestamp NULL DEFAULT NULL,
@@ -127,7 +130,7 @@ CREATE TABLE `g_trade` (
   `price` decimal(32,16) NOT NULL,
   `size` decimal(32,16) NOT NULL,
   `side` varchar(255) NOT NULL,
-  `time` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+  `time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `log_offset` bigint(20) NOT NULL DEFAULT '0',
   `log_seq` bigint(20) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`)
@@ -151,3 +154,11 @@ insert into `g_product`(`id`,`created_at`,`updated_at`,`base_currency`,`quote_cu
 ('EOS-USDT',null,null,'EOS','USDT',0.0001000000000000,1000.0000000000000000,4,3,0,0E-16,0E-16),
 ('ETH-USDT',null,null,'ETH','USDT',0.0001000000000000,10000.0000000000000000,4,2,0.01,0E-16,0E-16),
 ('LTC-USDT',null,null,'LTC','USDT',0.0010000000000000,1000.0000000000000000,4,2,0.01,0E-16,0E-16);
+INSERT INTO `g_user` (`created_at`, `updated_at`, `user_id`, `email`, `password_hash`) VALUES
+	('2019-11-28 14:10:56', '2019-11-28 14:10:56', 0, '124369976@qq.com', '16ede86aa3a32052c9b218c72063d968');
+INSERT INTO `g_account` (`created_at`, `updated_at`, `user_id`, `currency`, `hold`, `available`) VALUES
+	(NULL, NULL, 41, 'usdt', 0.0000000000000000, 1000000.0000000000000000),
+	(NULL, NULL, 41, 'btc', 0.0000000000000000, 100000.0000000000000000),
+	(NULL, NULL, 41, 'eth', 0.0000000000000000, 1000000.0000000000000000);
+
+

@@ -9,6 +9,7 @@
 *.iml
 *.xml
 *。sum
+app
 
 # Test binary, built with `go test -c`
 *.test
@@ -16,6 +17,8 @@
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+
+conf.json
 # Dependency directories (remove the comment below to include it)
 vendor/
 algo

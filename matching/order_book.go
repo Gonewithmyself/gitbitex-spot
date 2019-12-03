@@ -78,6 +78,104 @@ type depth struct {
 	queue *treemap.Map
 }
 
+func (d *depth) iter(fn func(order *BookOrder) bool) {
+	for itr := d.queue.Iterator(); itr.Next(); {
+		id := itr.Value().(int64)
+		s := d.orders[id]
+		if !fn(s) {
+			break
+		}
+	}
+}
+
+func (d *depth) buy(b *BookOrder, o *orderBook) (logs []Log) {
+	d.iter(func(s *BookOrder) bool {
+		if s.Price.Cmp(b.Price) > 0 ||
+			b.Funds.IsZero() {
+			return false
+		}
+
+		price := s.Price
+		bsize := b.Funds.Div(price).Truncate(8)
+		if bsize.IsZero() {
+			return false
+		}
+
+		size := decimal.Min(bsize, s.Size)
+		funds := size.Mul(price)
+		b.Funds = b.Funds.Sub(funds)
+		if err := d.decrSize(s.OrderId, size); err != nil {
+			log.Fatal("decr order: ", err)
+		}
+
+		if s.Size.IsZero() {
+			doneLog := &DoneLog{
+				Base:          Base{LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
+				OrderId:       s.OrderId,
+				Price:         s.Price,
+				RemainingSize: s.Size,
+				Reason:        models.DoneReasonFilled,
+				Side:          s.Side,
+			}
+			logs = append(logs, doneLog)
+		}
+
+		matchLog := &MatchLog{
+			Base:         Base{LogTypeMatch, o.nextLogSeq(), o.product.Id, time.Now()},
+			TradeId:      o.nextTradeSeq(),
+			TakerOrderId: b.OrderId,
+			MakerOrderId: s.OrderId,
+			Side:         s.Side,
+			Price:        price,
+			Size:         size,
+		}
+		logs = append(logs, matchLog)
+		return true
+	})
+	return
+}
+
+func (d *depth) sell(s *BookOrder, o *orderBook) (logs []Log) {
+	d.iter(func(b *BookOrder) bool {
+		if b.Price.Cmp(s.Price) < 0 ||
+			s.Size.IsZero() {
+			return false
+		}
+
+		price := b.Price
+		size := decimal.Min(price, s.Size)
+		s.Size = s.Size.Sub(size)
+		if err := d.decrSize(b.OrderId, size); err != nil {
+			log.Fatal("match: ", err)
+		}
+
+		if b.Size.IsZero() {
+			doneLog := &DoneLog{
+				Base:          Base{LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
+				OrderId:       b.OrderId,
+				Price:         b.Price,
+				RemainingSize: b.Size,
+				Reason:        models.DoneReasonFilled,
+				Side:          b.Side,
+			}
+			logs = append(logs, doneLog)
+		}
+
+		matchLog := &MatchLog{
+			Base:         Base{LogTypeMatch, o.nextLogSeq(), o.product.Id, time.Now()},
+			TradeId:      o.nextTradeSeq(),
+			TakerOrderId: s.OrderId,
+			MakerOrderId: b.OrderId,
+			Side:         b.Side,
+			Price:        price,
+			Size:         size,
+		}
+		logs = append(logs, matchLog)
+		return true
+	})
+	return
+}
+
 type PriceLevel struct {
 	Price      decimal.Decimal
 	Size       decimal.Decimal
@@ -96,6 +194,19 @@ type BookOrder struct {
 	Price   decimal.Decimal
 	Side    models.Side
 	Type    models.OrderType
+}
+
+func (o *BookOrder) hasFilled() bool {
+	if o.Side == models.SideSell &&
+		o.Size.IsZero() {
+		return true
+	}
+
+	if o.Side == models.SideBuy &&
+		o.Funds.IsZero() {
+		return true
+	}
+	return false
 }
 
 func NewOrderBook(product *models.Product) *orderBook {
@@ -145,88 +256,12 @@ func (o *orderBook) ApplyOrder(order *models.Order) (logs []Log) {
 	}
 
 	makerDepth := o.depths[takerOrder.Side.Opposite()]
-	for itr := makerDepth.queue.Iterator(); itr.Next(); {
-		orderId := itr.Value().(int64)
-		makerOrder := makerDepth.orders[orderId]
-
-		// 判断taker和maker是否发生价格交叉
-		if (takerOrder.Side == models.SideBuy && takerOrder.Price.Cmp(makerOrder.Price) < 0) ||
-			(takerOrder.Side == models.SideSell && takerOrder.Price.Cmp(makerOrder.Price) > 0) {
-			break
-		}
-
-		var size decimal.Decimal
-		var price decimal.Decimal
-		if takerOrder.Type == models.OrderTypeLimit ||
-			(takerOrder.Type == models.OrderTypeMarket && takerOrder.Side == models.SideSell) {
-			if takerOrder.Size.IsZero() {
-				break
-			}
-
-			// 成交价格
-			price = makerOrder.Price
-
-			// 取taker和maker的最小size做为成交size
-			size = decimal.Min(takerOrder.Size, makerOrder.Size)
-
-			// taker和maker都需要减掉size
-			takerOrder.Size = takerOrder.Size.Sub(size)
-			err := makerDepth.decrSize(makerOrder.OrderId, size)
-			if err != nil {
-				log.Fatal(err)
-			}
-		} else if takerOrder.Type == models.OrderTypeMarket && takerOrder.Side == models.SideBuy {
-			if takerOrder.Funds.IsZero() {
-				break
-			}
-
-			// 成交价格
-			price = makerOrder.Price
-
-			// 计算以当前价格taker的size
-			takerSize := takerOrder.Funds.Div(price).Truncate(o.product.BaseScale)
-			if takerSize.IsZero() {
-				break
-			}
-
-			// 取taker和maker的最小size做为成交size
-			size = decimal.Min(takerSize, makerOrder.Size)
-			funds := size.Mul(price)
-
-			// taker减去funds，maker减去size
-			takerOrder.Funds = takerOrder.Funds.Sub(funds)
-			err := makerDepth.decrSize(makerOrder.OrderId, size)
-			if err != nil {
-				log.Fatal(err)
-			}
-		} else {
-			log.Fatal("unknown orderType and side combination")
-		}
-
-		// match成功，递增一次tradeId，用于这一次交易的序列号
-		matchLog := &MatchLog{
-			Base:         Base{LogTypeMatch, o.nextLogSeq(), o.product.Id, time.Now()},
-			TradeId:      o.nextTradeSeq(),
-			TakerOrderId: takerOrder.OrderId,
-			MakerOrderId: makerOrder.OrderId,
-			Side:         makerOrder.Side,
-			Price:        price,
-			Size:         size,
-		}
-		logs = append(logs, matchLog)
-
-		// maker被完全fill
-		if makerOrder.Size.IsZero() {
-			doneLog := &DoneLog{
-				Base:          Base{LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
-				OrderId:       makerOrder.OrderId,
-				Price:         makerOrder.Price,
-				RemainingSize: makerOrder.Size,
-				Reason:        models.DoneReasonFilled,
-				Side:          makerOrder.Side,
-			}
-			logs = append(logs, doneLog)
-		}
+	if takerOrder.Side == models.SideBuy {
+		logs = makerDepth.buy(takerOrder, o)
+	} else if takerOrder.Side == models.SideSell {
+		logs = makerDepth.sell(takerOrder, o)
+	} else {
+		log.Fatal("unknown order side", takerOrder)
 	}
 
 	if takerOrder.Type == models.OrderTypeLimit && takerOrder.Size.GreaterThan(decimal.Zero) {
@@ -241,37 +276,31 @@ func (o *orderBook) ApplyOrder(order *models.Order) (logs []Log) {
 			Side:          takerOrder.Side,
 		}
 		logs = append(logs, openLog)
-
-	} else {
-		var price = takerOrder.Price
-		var remainingSize = takerOrder.Size
-		var reason = models.DoneReasonFilled
-
-		if takerOrder.Type == models.OrderTypeMarket {
-			price = decimal.Zero
-			remainingSize = decimal.Zero
-			if takerOrder.Side == models.SideSell {
-				if takerOrder.Size.GreaterThan(decimal.Zero) {
-					reason = models.DoneReasonCancelled
-				}
-			} else {
-				if takerOrder.Funds.GreaterThan(decimal.Zero) {
-					reason = models.DoneReasonCancelled
-				}
-			}
-		}
-
-		doneLog := &DoneLog{
-			Base:          Base{LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
-			OrderId:       takerOrder.OrderId,
-			Price:         price,
-			RemainingSize: remainingSize,
-			Reason:        reason,
-			Side:          takerOrder.Side,
-		}
-		logs = append(logs, doneLog)
+		return
 	}
-	return logs
+	var price = takerOrder.Price
+	var remainingSize = takerOrder.Size
+	var reason = models.DoneReasonFilled
+
+	if takerOrder.Type == models.OrderTypeMarket {
+		price = decimal.Zero
+		remainingSize = decimal.Zero
+		if !takerOrder.hasFilled() {
+			reason = models.DoneReasonCancelled
+		}
+	}
+
+	doneLog := &DoneLog{
+		Base:          Base{LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
+		OrderId:       takerOrder.OrderId,
+		Price:         price,
+		RemainingSize: remainingSize,
+		Reason:        reason,
+		Side:          takerOrder.Side,
+	}
+	logs = append(logs, doneLog)
+
+	return
 }
 
 func (o *orderBook) CancelOrder(order *models.Order) (logs []Log) {

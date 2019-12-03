@@ -58,6 +58,9 @@ func getWriter(productId string) *kafka.Writer {
 	return newWriter
 }
 
+func SubmitOrder(order *models.Order) {
+	submitOrder(order)
+}
 func submitOrder(order *models.Order) {
 	buf, err := json.Marshal(order)
 	if err != nil {

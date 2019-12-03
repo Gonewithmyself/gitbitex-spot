@@ -25,6 +25,12 @@ import (
 
 var minutes = []int64{1, 3, 5, 15, 30, 60, 120, 240, 360, 720, 1440}
 
+func TickerUniqueKey(product string, idx int, ts int64) uint64 {
+	id := service.ProductID(product)
+
+	return id<<56 + uint64(idx)<<48 + uint64(ts)
+}
+
 type TickMaker struct {
 	ticks     map[int64]*models.Tick
 	tickCh    chan models.Tick

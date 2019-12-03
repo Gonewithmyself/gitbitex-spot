@@ -12,34 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package service
+package conf
 
 import (
-	"github.com/gitbitex/gitbitex-spot/models"
-	"github.com/gitbitex/gitbitex-spot/models/mysql"
-	"log"
+	"context"
+	"testing"
+	"time"
+
+	"github.com/segmentio/kafka-go"
 )
 
-var ids = map[string]uint64{}
-
-func GetProductById(id string) (*models.Product, error) {
-	return mysql.SharedStore().GetProductById(id)
+var hosts = []string{
+	"127.0.0.1:9092",
+	"127.0.0.1:9093",
 }
 
-func GetProducts() ([]*models.Product, error) {
-	return mysql.SharedStore().GetProducts()
-}
+func TestGetConfig(t *testing.T) {
+	w := kafka.NewWriter(kafka.WriterConfig{
+		Brokers:      hosts,
+		Topic:        "golang",
+		Balancer:     &kafka.LeastBytes{},
+		BatchTimeout: 5 * time.Millisecond,
+	})
 
-func ProductID(id string) uint64 {
-	return ids[id]
-}
-
-func init() {
-	pds, err := mysql.SharedStore().GetProducts()
-	if err != nil {
-		log.Fatal("load products", err)
-	}
-	for i := range pds {
-		ids[pds[i].Id] = uint64(i)
-	}
+	t.Log(w.WriteMessages(context.Background(), kafka.Message{
+		Value: []byte("123"),
+	}))
+	t.Error()
+	_ = w
 }
