@@ -56,6 +56,5 @@ func main() {
 	}
 
 	rest.StartServer()
-
 	select {}
 }

@@ -27,6 +27,8 @@ import (
 
 const fillWorkerNum = 10
 
+const billTopic = "fill2bill"
+
 type FillExecutor struct {
 	// 用于接收sharding之后的fill，按照orderId进行sharding，可以降低锁竞争，
 	workerChs [fillWorkerNum]chan *models.Fill
@@ -37,11 +39,14 @@ func NewFillExecutor() *FillExecutor {
 		workerChs: [fillWorkerNum]chan *models.Fill{},
 	}
 
+	config, _ := conf.GetConfig()
 	// 初始化和fillWorkersNum一样数量的routine，每个routine负责一个chan
 	for i := 0; i < fillWorkerNum; i++ {
 		f.workerChs[i] = make(chan *models.Fill, 512)
+
 		go func(idx int) {
 			settledOrderCache, err := lru.New(1000)
+			sender := service.NewSender(billTopic, config.Kafka.Brokers)
 			if err != nil {
 				panic(err)
 			}
@@ -66,7 +71,7 @@ func NewFillExecutor() *FillExecutor {
 						continue
 					}
 
-					err = service.ExecuteFill(fill.OrderId)
+					err = service.ExecuteFill(fill.OrderId, sender)
 					if err != nil {
 						log.Error(err)
 					}

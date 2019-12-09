@@ -33,6 +33,8 @@ type Log interface {
 }
 
 type Base struct {
+	Taker     int64
+	Maker     int64
 	Type      LogType
 	Sequence  int64
 	ProductId string

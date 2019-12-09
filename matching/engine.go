@@ -15,9 +15,10 @@
 package matching
 
 import (
+	"time"
+
 	"github.com/gitbitex/gitbitex-spot/models"
 	logger "github.com/siddontang/go-log/log"
-	"time"
 )
 
 type Engine struct {
@@ -160,9 +161,12 @@ func (e *Engine) runApplier() {
 				e.productId, snapshot.OrderOffset, delta, orderOffset)
 
 			// 执行快照，并将快照数据写入批准chan
+			start := time.Now()
 			snapshot.OrderBookSnapshot = e.OrderBook.Snapshot()
 			snapshot.OrderOffset = orderOffset
 			e.snapshotApproveReqCh <- snapshot
+			logger.Info("snapshot cost", time.Now().Sub(start).Seconds(),
+				len(snapshot.OrderBookSnapshot.Orders))
 		}
 	}
 }

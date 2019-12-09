@@ -108,7 +108,7 @@ func UpdateOrderStatus(orderId int64, oldStatus, newStatus models.OrderStatus) (
 	return mysql.SharedStore().UpdateOrderStatus(orderId, oldStatus, newStatus)
 }
 
-func ExecuteFill(orderId int64) error {
+func ExecuteFill(orderId int64, sender Sender) error {
 	// tx
 	db, err := mysql.SharedStore().BeginTx()
 	if err != nil {
@@ -143,7 +143,7 @@ func ExecuteFill(orderId int64) error {
 		return nil
 	}
 
-	var bills []*models.Bill
+	var bills = make([]interface{}, 0, len(fills))
 	for _, fill := range fills {
 		fill.Settled = true
 
@@ -156,37 +156,43 @@ func ExecuteFill(orderId int64) error {
 
 			if order.Side == models.SideBuy {
 				// 买单，incr base
-				bill, err := AddDelayBill(db, order.UserId, product.BaseCurrency, fill.Size, decimal.Zero,
-					models.BillTypeTrade, notes)
-				if err != nil {
-					return err
-				}
-				bills = append(bills, bill)
+				bills = append(bills, &models.Bill{
+					UserId:    order.UserId,
+					Currency:  product.BaseCurrency,
+					Available: fill.Size,
+					Hold:      decimal.Zero,
+					Type:      models.BillTypeTrade,
+					Notes:     notes,
+				})
 
 				// 买单，decr quote
-				bill, err = AddDelayBill(db, order.UserId, product.QuoteCurrency, decimal.Zero, executedValue.Neg(),
-					models.BillTypeTrade, notes)
-				if err != nil {
-					return err
-				}
-				bills = append(bills, bill)
+				bills = append(bills, &models.Bill{
+					UserId:    order.UserId,
+					Currency:  product.QuoteCurrency,
+					Available: decimal.Zero,
+					Hold:      executedValue.Neg(),
+					Type:      models.BillTypeTrade,
+					Notes:     notes,
+				})
 
 			} else {
 				// 卖单，decr base
-				bill, err := AddDelayBill(db, order.UserId, product.BaseCurrency, decimal.Zero, fill.Size.Neg(),
-					models.BillTypeTrade, notes)
-				if err != nil {
-					return err
-				}
-				bills = append(bills, bill)
-
-				// 卖单，incr quote
-				bill, err = AddDelayBill(db, order.UserId, product.QuoteCurrency, executedValue, decimal.Zero,
-					models.BillTypeTrade, notes)
-				if err != nil {
-					return err
-				}
-				bills = append(bills, bill)
+				bills = append(bills, &models.Bill{
+					UserId:    order.UserId,
+					Currency:  product.BaseCurrency,
+					Available: decimal.Zero,
+					Hold:      fill.Size.Neg(),
+					Type:      models.BillTypeTrade,
+					Notes:     notes,
+				})
+				bills = append(bills, &models.Bill{
+					UserId:    order.UserId,
+					Currency:  product.QuoteCurrency,
+					Available: executedValue,
+					Hold:      decimal.Zero,
+					Type:      models.BillTypeTrade,
+					Notes:     notes,
+				})
 			}
 
 		} else {
@@ -202,29 +208,37 @@ func ExecuteFill(orderId int64) error {
 				// 如果是是买单，需要解冻剩余的funds
 				remainingFunds := order.Funds.Sub(order.ExecutedValue)
 				if remainingFunds.GreaterThan(decimal.Zero) {
-					bill, err := AddDelayBill(db, order.UserId, product.QuoteCurrency, remainingFunds, remainingFunds.Neg(),
-						models.BillTypeTrade, notes)
-					if err != nil {
-						return err
-					}
-					bills = append(bills, bill)
+					bills = append(bills, &models.Bill{
+						UserId:    order.UserId,
+						Currency:  product.QuoteCurrency,
+						Available: remainingFunds,
+						Hold:      remainingFunds.Neg(),
+						Type:      models.BillTypeTrade,
+						Notes:     notes,
+					})
 				}
 
 			} else {
 				// 如果是卖单，解冻剩余的size
 				remainingSize := order.Size.Sub(order.FilledSize)
 				if remainingSize.GreaterThan(decimal.Zero) {
-					bill, err := AddDelayBill(db, order.UserId, product.BaseCurrency, remainingSize, remainingSize.Neg(),
-						models.BillTypeTrade, notes)
-					if err != nil {
-						return err
-					}
-					bills = append(bills, bill)
+					bills = append(bills, &models.Bill{
+						UserId:    order.UserId,
+						Currency:  product.BaseCurrency,
+						Available: remainingSize,
+						Hold:      remainingSize.Neg(),
+						Type:      models.BillTypeTrade,
+						Notes:     notes,
+					})
 				}
 			}
 
 			break
 		}
+	}
+
+	if err := sender.Send(bills...); err != nil {
+		return err
 	}
 
 	err = db.UpdateOrder(order)

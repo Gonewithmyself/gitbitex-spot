@@ -33,6 +33,7 @@ type Store interface {
 
 	GetUnsettledBillsByUserId(userId int64, currency string) ([]*Bill, error)
 	GetUnsettledBills() ([]*Bill, error)
+	GetLastBillByProductId(productId string) (*Bill, error)
 	AddBills(bills []*Bill) error
 	UpdateBill(bill *Bill) error
 
@@ -61,4 +62,10 @@ type Store interface {
 	GetTicksByProductId(productId string, granularity int64, limit int) ([]*Tick, error)
 	GetLastTickByProductId(productId string, granularity int64) (*Tick, error)
 	AddTicks(ticks []*Tick) error
+
+	AddOffsetBills([]*OffsetBill) error
+	AddOffset(*Offset) error
+	UpdateOffset(*Offset) error
+	GetOffsetForUpdate(string, int64) (*Offset, error)
+	GetLastOffset(string, int64) (*Offset, error)
 }

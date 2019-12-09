@@ -12,33 +12,39 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package service
+package matching
 
 import (
-	"github.com/gitbitex/gitbitex-spot/models"
-	"github.com/gitbitex/gitbitex-spot/models/mysql"
+	"testing"
+	"time"
+
+	"github.com/gitbitex/gitbitex-spot/service"
 )
 
-// var ids = map[string]uint64{}
+func TestNewEngine(t *testing.T) {
+	p, err := service.GetProductById("EOS-USDT")
+	if err != nil {
+		t.Fatal(err)
+	}
 
-func GetProductById(id string) (*models.Product, error) {
-	return mysql.SharedStore().GetProductById(id)
+	snapshotStore := NewRedisSnapshotStore(p.Id)
+	snap, err := snapshotStore.GetLatest()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bk := NewOrderBook(p)
+	bk.Restore(&snap.OrderBookSnapshot)
+
+	// snapshot
+	start := time.Now()
+	sn := bk.Snapshot()
+	t.Log(time.Now().Sub(start).Milliseconds(), len(sn.Orders))
+
+	// compress
+	t.Error(p)
 }
 
-func GetProducts() ([]*models.Product, error) {
-	return mysql.SharedStore().GetProducts()
+func TestCompress(t *testing.T) {
+
 }
-
-// func ProductID(id string) uint64 {
-// 	return ids[id]
-// }
-
-// func init() {
-// 	pds, err := mysql.SharedStore().GetProducts()
-// 	if err != nil {
-// 		log.Fatal("load products", err)
-// 	}
-// 	for i := range pds {
-// 		ids[pds[i].Id] = uint64(i)
-// 	}
-// }

@@ -17,13 +17,14 @@ package matching
 import (
 	"errors"
 	"fmt"
+	"math"
+	"time"
+
 	"github.com/emirpasic/gods/maps/treemap"
 	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/gitbitex/gitbitex-spot/utils"
 	"github.com/shopspring/decimal"
 	"github.com/siddontang/go-log/log"
-	"math"
-	"time"
 )
 
 const (
@@ -110,7 +111,7 @@ func (d *depth) buy(b *BookOrder, o *orderBook) (logs []Log) {
 
 		if s.Size.IsZero() {
 			doneLog := &DoneLog{
-				Base:          Base{LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
+				Base:          Base{s.UserID, 0, LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
 				OrderId:       s.OrderId,
 				Price:         s.Price,
 				RemainingSize: s.Size,
@@ -121,7 +122,7 @@ func (d *depth) buy(b *BookOrder, o *orderBook) (logs []Log) {
 		}
 
 		matchLog := &MatchLog{
-			Base:         Base{LogTypeMatch, o.nextLogSeq(), o.product.Id, time.Now()},
+			Base:         Base{b.UserID, s.UserID, LogTypeMatch, o.nextLogSeq(), o.product.Id, time.Now()},
 			TradeId:      o.nextTradeSeq(),
 			TakerOrderId: b.OrderId,
 			MakerOrderId: s.OrderId,
@@ -151,7 +152,7 @@ func (d *depth) sell(s *BookOrder, o *orderBook) (logs []Log) {
 
 		if b.Size.IsZero() {
 			doneLog := &DoneLog{
-				Base:          Base{LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
+				Base:          Base{b.UserID, 0, LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
 				OrderId:       b.OrderId,
 				Price:         b.Price,
 				RemainingSize: b.Size,
@@ -162,7 +163,7 @@ func (d *depth) sell(s *BookOrder, o *orderBook) (logs []Log) {
 		}
 
 		matchLog := &MatchLog{
-			Base:         Base{LogTypeMatch, o.nextLogSeq(), o.product.Id, time.Now()},
+			Base:         Base{s.UserID, b.UserID, LogTypeMatch, o.nextLogSeq(), o.product.Id, time.Now()},
 			TradeId:      o.nextTradeSeq(),
 			TakerOrderId: s.OrderId,
 			MakerOrderId: b.OrderId,
@@ -189,6 +190,7 @@ type priceOrderIdKey struct {
 
 type BookOrder struct {
 	OrderId int64
+	UserID  int64
 	Size    decimal.Decimal
 	Funds   decimal.Decimal
 	Price   decimal.Decimal
@@ -239,6 +241,7 @@ func (o *orderBook) ApplyOrder(order *models.Order) (logs []Log) {
 
 	takerOrder := &BookOrder{
 		OrderId: order.Id,
+		UserID:  order.UserId,
 		Size:    order.Size,
 		Funds:   order.Funds,
 		Price:   order.Price,
@@ -269,7 +272,7 @@ func (o *orderBook) ApplyOrder(order *models.Order) (logs []Log) {
 		o.depths[takerOrder.Side].add(*takerOrder)
 
 		openLog := &OpenLog{
-			Base:          Base{LogTypeOpen, o.nextLogSeq(), o.product.Id, time.Now()},
+			Base:          Base{0, 0, LogTypeOpen, o.nextLogSeq(), o.product.Id, time.Now()},
 			OrderId:       takerOrder.OrderId,
 			RemainingSize: takerOrder.Size,
 			Price:         takerOrder.Price,
@@ -284,14 +287,17 @@ func (o *orderBook) ApplyOrder(order *models.Order) (logs []Log) {
 
 	if takerOrder.Type == models.OrderTypeMarket {
 		price = decimal.Zero
-		remainingSize = decimal.Zero
+		if takerOrder.Side == models.SideBuy {
+			remainingSize = takerOrder.Funds
+		}
+
 		if !takerOrder.hasFilled() {
 			reason = models.DoneReasonCancelled
 		}
 	}
 
 	doneLog := &DoneLog{
-		Base:          Base{LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
+		Base:          Base{takerOrder.UserID, 0, LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
 		OrderId:       takerOrder.OrderId,
 		Price:         price,
 		RemainingSize: remainingSize,
@@ -319,7 +325,7 @@ func (o *orderBook) CancelOrder(order *models.Order) (logs []Log) {
 	}
 
 	doneLog := &DoneLog{
-		Base:          Base{LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
+		Base:          Base{bookOrder.UserID, 0, LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
 		OrderId:       bookOrder.OrderId,
 		Price:         bookOrder.Price,
 		RemainingSize: remainingSize,
@@ -331,17 +337,21 @@ func (o *orderBook) CancelOrder(order *models.Order) (logs []Log) {
 
 func (o *orderBook) Snapshot() orderBookSnapshot {
 	snapshot := orderBookSnapshot{
-		Orders:        []BookOrder{},
+		Orders: make([]BookOrder, len(o.depths[models.SideSell].orders)+
+			len(o.depths[models.SideBuy].orders)),
 		LogSeq:        o.logSeq,
 		TradeSeq:      o.tradeSeq,
 		OrderIdWindow: o.orderIdWindow,
 	}
 
+	var i int
 	for _, order := range o.depths[models.SideSell].orders {
-		snapshot.Orders = append(snapshot.Orders, *order)
+		snapshot.Orders[i] = *order
+		i++
 	}
 	for _, order := range o.depths[models.SideBuy].orders {
-		snapshot.Orders = append(snapshot.Orders, *order)
+		snapshot.Orders[i] = *order
+		i++
 	}
 
 	return snapshot

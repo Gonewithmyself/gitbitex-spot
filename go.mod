@@ -18,6 +18,7 @@ require (
 	github.com/go-redis/redis v6.15.2+incompatible
 	github.com/go-sql-driver/mysql v1.4.1
 	github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6 // indirect
+	github.com/golang/protobuf v1.3.1
 	github.com/google/uuid v1.1.1
 	github.com/gorilla/websocket v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0 // indirect
@@ -60,6 +61,7 @@ require (
 	go.uber.org/atomic v1.4.0 // indirect
 	go.uber.org/multierr v1.1.0 // indirect
 	go.uber.org/zap v1.10.0 // indirect
+	google.golang.org/grpc v1.19.0
 	gopkg.in/mgo.v2 v2.0.0-20180705113604-9856a29383ce // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	sigs.k8s.io/yaml v1.1.0 // indirect

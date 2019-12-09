@@ -1,0 +1,17 @@
+syntax="proto3";
+
+package pb;
+
+message bill {
+    int64 id        = 1;
+    string currency = 2;
+    double avail    = 3;
+    double hold     = 3;
+    string type     = 4;
+    string notes    = 5;
+}
+
+
+message response {
+
+}

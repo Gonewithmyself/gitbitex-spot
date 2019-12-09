@@ -159,10 +159,52 @@ func AddDelayBill(store models.Store, userId int64, currency string, available, 
 		Settled:   false,
 		Notes:     notes,
 	}
-	err := store.AddBills([]*models.Bill{bill})
-	return bill, err
+	// err := store.AddBills([]*models.Bill{bill})
+	return bill, nil
+}
+
+func AddBills(bills []*models.Bill) error {
+	if len(bills) == 0 {
+		return nil
+	}
+
+	err := mysql.SharedStore().AddBills(bills)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func GetUnsettledBills() ([]*models.Bill, error) {
 	return mysql.SharedStore().GetUnsettledBills()
+}
+
+func AddOffsetBills(bills []*models.OffsetBill) error {
+	tx, err := mysql.SharedStore().BeginTx()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// err = tx.AddOffsetBills(bills)
+	// if err != nil {
+	// 	return err
+	// }
+
+	l := len(bills)
+	last := bills[l-1].Offset
+	off, err := tx.GetOffsetForUpdate(last.Group, last.Partition)
+	if err != nil {
+		return err
+	}
+
+	if off == nil {
+		if err = tx.AddOffset(&last); err != nil {
+			return err
+		}
+	} else {
+		if err = tx.UpdateOffset(&last); err != nil {
+			return err
+		}
+	}
+	return tx.CommitTx()
 }

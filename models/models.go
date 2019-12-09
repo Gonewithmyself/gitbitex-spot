@@ -128,6 +128,7 @@ type Account struct {
 }
 
 type Bill struct {
+	Settled   bool
 	Id        int64 `gorm:"column:id;primary_key;AUTO_INCREMENT"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -136,8 +137,19 @@ type Bill struct {
 	Available decimal.Decimal `sql:"type:decimal(32,16);"`
 	Hold      decimal.Decimal `sql:"type:decimal(32,16);"`
 	Type      BillType
-	Settled   bool
 	Notes     string
+}
+
+type OffsetBill struct {
+	Bill
+	Offset
+}
+
+type Offset struct {
+	Group     string `gorm:"column:group;primary_key"`
+	Partition int64  `gorm:"column:partition;primary_key"`
+	LogOffset int64
+	LogSeq    int64
 }
 
 type Product struct {

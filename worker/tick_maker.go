@@ -20,16 +20,17 @@ import (
 	"github.com/gitbitex/gitbitex-spot/service"
 	"github.com/shopspring/decimal"
 	"github.com/siddontang/go-log/log"
+	"math/rand"
 	"time"
 )
 
 var minutes = []int64{1, 3, 5, 15, 30, 60, 120, 240, 360, 720, 1440}
 
-func TickerUniqueKey(product string, idx int, ts int64) uint64 {
-	id := service.ProductID(product)
+// func TickerUniqueKey(product string, idx int, ts int64) uint64 {
+// 	id := service.ProductID(product)
 
-	return id<<56 + uint64(idx)<<48 + uint64(ts)
-}
+// 	return id<<56 + uint64(idx)<<48 + uint64(ts)
+// }
 
 type TickMaker struct {
 	ticks     map[int64]*models.Tick
@@ -128,10 +129,13 @@ func (t *TickMaker) flusher() {
 				err := service.AddTicks(ticks)
 				if err != nil {
 					log.Error(err)
-					time.Sleep(time.Second)
+					// retry
+					time.Sleep(time.Second + time.Duration(rand.Intn(2000)))
 					continue
 				}
 				ticks = nil
+
+				// TODO redis publish
 				break
 			}
 		}
