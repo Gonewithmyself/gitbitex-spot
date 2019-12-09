@@ -15,13 +15,15 @@
 package worker
 
 import (
+	"math/rand"
+	"time"
+
 	"github.com/gitbitex/gitbitex-spot/matching"
 	"github.com/gitbitex/gitbitex-spot/models"
+	"github.com/gitbitex/gitbitex-spot/models/mysql"
 	"github.com/gitbitex/gitbitex-spot/service"
 	"github.com/shopspring/decimal"
 	"github.com/siddontang/go-log/log"
-	"math/rand"
-	"time"
 )
 
 var minutes = []int64{1, 3, 5, 15, 30, 60, 120, 240, 360, 720, 1440}
@@ -56,10 +58,15 @@ func NewTickMaker(productId string, logReader matching.LogReader) *TickMaker {
 		if tick != nil {
 			log.Infof("load last tick: %v", tick)
 			t.ticks[granularity] = tick
-			t.logOffset = tick.LogOffset
-			t.logSeq = tick.LogSeq
 		}
 	}
+
+	last, err := mysql.SharedStore().GetLastOffset("kline_"+logReader.GetProductId(), 0)
+	if err != nil {
+		panic(err)
+	}
+	t.logOffset = last.LogOffset
+	t.logSeq = last.LogSeq
 
 	t.logReader.RegisterObserver(t)
 	return t
@@ -114,26 +121,27 @@ func (t *TickMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
 }
 
 func (t *TickMaker) flusher() {
-	var ticks []*models.Tick
-
+	var tickM = make(map[int64][]*models.Tick, len(minutes))
+	var count int
 	for {
 		select {
 		case tick := <-t.tickCh:
+			ticks := tickM[tick.Granularity]
 			ticks = append(ticks, &tick)
-
-			if len(t.tickCh) > 0 && len(ticks) < 1000 {
+			tickM[tick.Granularity] = ticks
+			if len(t.tickCh) > 0 && count < 1000 {
 				continue
 			}
 
 			for {
-				err := service.AddTicks(ticks)
+				err := service.AddTicks(tickM)
 				if err != nil {
 					log.Error(err)
 					// retry
 					time.Sleep(time.Second + time.Duration(rand.Intn(2000)))
 					continue
 				}
-				ticks = nil
+				// ticks = nil
 
 				// TODO redis publish
 				break

@@ -64,8 +64,10 @@ type Store interface {
 	AddTicks(ticks []*Tick) error
 
 	AddOffsetBills([]*OffsetBill) error
+
 	AddOffset(*Offset) error
 	UpdateOffset(*Offset) error
 	GetOffsetForUpdate(string, int64) (*Offset, error)
 	GetLastOffset(string, int64) (*Offset, error)
+	UpsertOffset(*Offset) error
 }

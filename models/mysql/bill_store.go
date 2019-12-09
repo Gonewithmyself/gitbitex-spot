@@ -98,6 +98,13 @@ func (s *Store) UpdateOffset(account *models.Offset) error {
 	return s.db.Save(account).Error
 }
 
+func (s *Store) UpsertOffset(offset *models.Offset) error {
+	values := fmt.Sprintf("`%v`, %v, %v, %v", offset.Group, offset.Partition, offset.LogOffset, offset.LogSeq)
+	sql := fmt.Sprintf("INSERT INTO g_offset (`group`, `partition`, log_offset, log_seq) VALUES(%s)"+
+		"ON DUPLICATE KEY UPDATE log_offset=VALUES(log_offset), log_seq=VALUES(log_seq)", values)
+	return s.db.Exec(sql).Error
+}
+
 func (s *Store) GetLastOffset(group string, partition int64) (*models.Offset, error) {
 	var offset models.Offset
 	err := s.db.Where("`group`=? AND `partition=?`", group, partition).Find(&offset).Error

@@ -49,14 +49,15 @@ func (s *Store) AddTicks(ticks []*models.Tick) error {
 	// ticks = uniqueTicks(ticks)
 	var valueStrings []string
 	for _, tick := range ticks {
-		valueString := fmt.Sprintf("(%v,'%v', %v, %v, %v, %v, %v, %v, %v,%v,%v)",
-			"CURRENT_TIMESTAMP", tick.ProductId, tick.Granularity, tick.Time, tick.Open, tick.Low, tick.High, tick.Close,
+		valueString := fmt.Sprintf("(%v, %v, %v, %v, %v, %v, %v,%v,%v)",
+			"CURRENT_TIMESTAMP", tick.Time, tick.Open, tick.Low, tick.High, tick.Close,
 			tick.Volume, tick.LogOffset, tick.LogSeq)
 		valueStrings = append(valueStrings, valueString)
 	}
-	sql := fmt.Sprintf("insert INTO g_tick (created_at, product_id,granularity,time,open,low,high,close,"+
+	sql := fmt.Sprintf("insert INTO g_tick (created_at, time,open,low,high,close,"+
 		"volume,log_offset,log_seq) VALUES %s"+
-		"ON DUPLICATE KEY UPDATE `volume`=VALUES(`volume`)", strings.Join(valueStrings, ","))
+		"ON DUPLICATE KEY UPDATE `open`=VALUES(`open`), `low`=VALUES(`low`), `high`=VALUES(`high`), `close`=VALUES(`close`),`volume`=VALUES(`volume`),",
+		strings.Join(valueStrings, ","))
 	return s.db.Exec(sql).Error
 }
 

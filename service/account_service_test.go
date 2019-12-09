@@ -57,3 +57,12 @@ func TestXXXX(t *testing.T) {
 	// t.Log(a)
 	t.Error()
 }
+
+func Test(t *testing.T) {
+	orig := []int64{1, 2, 3, 4, 5, 6}
+	min := len(orig) - 1
+	t.Log(orig[:min])
+	left := orig[min:]
+	orig = append(orig[:0], left...)
+	t.Error(orig)
+}
