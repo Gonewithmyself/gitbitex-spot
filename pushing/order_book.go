@@ -57,6 +57,12 @@ type OrderBookFullSnapshot struct {
 	Orders    []matching.BookOrder
 }
 
+type PriceLevel struct {
+	Price      decimal.Decimal
+	Size       decimal.Decimal
+	OrderCount int64
+}
+
 func newOrderBook(productId string) *orderBook {
 	b := &orderBook{
 		productId: productId,
@@ -74,7 +80,7 @@ func (s *orderBook) saveOrder(logOffset, logSeq int64, orderId int64, newSize, p
 		panic(newSize)
 	}
 
-	var changedLevel *matching.PriceLevel
+	var changedLevel *PriceLevel
 
 	priceLevels := s.depths[side]
 	order, found := s.orders[orderId]
@@ -92,14 +98,14 @@ func (s *orderBook) saveOrder(logOffset, logSeq int64, orderId int64, newSize, p
 
 		val, found := priceLevels.Get(price)
 		if !found {
-			changedLevel = &matching.PriceLevel{
+			changedLevel = &PriceLevel{
 				Price:      price,
 				Size:       newSize,
 				OrderCount: 1,
 			}
 			priceLevels.Put(price, changedLevel)
 		} else {
-			changedLevel = val.(*matching.PriceLevel)
+			changedLevel = val.(*PriceLevel)
 			changedLevel.Size = changedLevel.Size.Add(newSize)
 			changedLevel.OrderCount++
 		}
@@ -120,7 +126,7 @@ func (s *orderBook) saveOrder(logOffset, logSeq int64, orderId int64, newSize, p
 			panic(fmt.Sprintf("%v %v %v %v", orderId, price, newSize, side))
 		}
 
-		changedLevel = val.(*matching.PriceLevel)
+		changedLevel = val.(*PriceLevel)
 		changedLevel.Size = changedLevel.Size.Sub(decrSize)
 		if changedLevel.Size.IsZero() {
 			priceLevels.Remove(price)
@@ -145,16 +151,16 @@ func (s *orderBook) SnapshotLevel2(levels int) *OrderBookLevel2Snapshot {
 	snapshot := OrderBookLevel2Snapshot{
 		ProductId: s.productId,
 		Seq:       s.seq,
-		Asks:      [][3]interface{}{},
-		Bids:      [][3]interface{}{},
+		Asks:      make([][3]interface{}, utils.MinInt(levels, s.depths[models.SideSell].Size())),
+		Bids:      make([][3]interface{}, utils.MinInt(levels, s.depths[models.SideBuy].Size())),
 	}
 	for itr, i := s.depths[models.SideBuy].Iterator(), 0; itr.Next() && i < levels; i++ {
-		v := itr.Value().(*matching.PriceLevel)
-		snapshot.Bids = append(snapshot.Bids, [3]interface{}{v.Price.String(), v.Size.String(), v.OrderCount})
+		v := itr.Value().(*PriceLevel)
+		snapshot.Bids[i] = [3]interface{}{v.Price.String(), v.Size.String(), v.OrderCount}
 	}
 	for itr, i := s.depths[models.SideSell].Iterator(), 0; itr.Next() && i < levels; i++ {
-		v := itr.Value().(*matching.PriceLevel)
-		snapshot.Asks = append(snapshot.Asks, [3]interface{}{v.Price.String(), v.Size.String(), v.OrderCount})
+		v := itr.Value().(*PriceLevel)
+		snapshot.Asks[i] = [3]interface{}{v.Price.String(), v.Size.String(), v.OrderCount}
 	}
 	return &snapshot
 }
@@ -165,10 +171,13 @@ func (s *orderBook) SnapshotFull() *OrderBookFullSnapshot {
 		Seq:       s.seq,
 		LogOffset: s.logOffset,
 		LogSeq:    s.logSeq,
-		Orders:    []matching.BookOrder{},
+		Orders:    make([]matching.BookOrder, len(s.orders)),
 	}
+
+	i := 0
 	for _, order := range s.orders {
-		snapshot.Orders = append(snapshot.Orders, *order)
+		snapshot.Orders[i] = *order
+		i++
 	}
 	return &snapshot
 }
@@ -183,14 +192,15 @@ func (s *orderBook) Restore(snapshot *OrderBookFullSnapshot) {
 	s.logSeq = snapshot.LogSeq
 }
 
-type snapshotStore struct {
+// redisSnapshotStore is used to manage snapshots
+type redisSnapshotStore struct {
 	redisClient *redis.Client
 }
 
-var store *snapshotStore
+var store *redisSnapshotStore
 var onceStore sync.Once
 
-func sharedSnapshotStore() *snapshotStore {
+func sharedSnapshotStore() *redisSnapshotStore {
 	onceStore.Do(func() {
 		gbeConfig, err := conf.GetConfig()
 		if err != nil {
@@ -203,12 +213,12 @@ func sharedSnapshotStore() *snapshotStore {
 			DB:       0,
 		})
 
-		store = &snapshotStore{redisClient: redisClient}
+		store = &redisSnapshotStore{redisClient: redisClient}
 	})
 	return store
 }
 
-func (s *snapshotStore) storeLevel2(productId string, snapshot *OrderBookLevel2Snapshot) error {
+func (s *redisSnapshotStore) storeLevel2(productId string, snapshot *OrderBookLevel2Snapshot) error {
 	buf, err := json.Marshal(snapshot)
 	if err != nil {
 		return err
@@ -216,15 +226,7 @@ func (s *snapshotStore) storeLevel2(productId string, snapshot *OrderBookLevel2S
 	return s.redisClient.Set(orderBookL2SnapshotKeyPrefix+productId, buf, 7*24*time.Hour).Err()
 }
 
-func (s *snapshotStore) storeFull(productId string, snapshot *OrderBookFullSnapshot) error {
-	buf, err := json.Marshal(snapshot)
-	if err != nil {
-		return err
-	}
-	return s.redisClient.Set(orderBookFullSnapshotKeyPrefix+productId, buf, 7*24*time.Hour).Err()
-}
-
-func (s *snapshotStore) getLastLevel2(productId string) (*OrderBookLevel2Snapshot, error) {
+func (s *redisSnapshotStore) getLastLevel2(productId string) (*OrderBookLevel2Snapshot, error) {
 	ret, err := s.redisClient.Get(orderBookL2SnapshotKeyPrefix + productId).Bytes()
 	if err != nil {
 		if err == redis.Nil {
@@ -239,7 +241,15 @@ func (s *snapshotStore) getLastLevel2(productId string) (*OrderBookLevel2Snapsho
 	return &snapshot, err
 }
 
-func (s *snapshotStore) getLastFull(productId string) (*OrderBookFullSnapshot, error) {
+func (s *redisSnapshotStore) storeFull(productId string, snapshot *OrderBookFullSnapshot) error {
+	buf, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+	return s.redisClient.Set(orderBookFullSnapshotKeyPrefix+productId, buf, 7*24*time.Hour).Err()
+}
+
+func (s *redisSnapshotStore) getLastFull(productId string) (*OrderBookFullSnapshot, error) {
 	ret, err := s.redisClient.Get(orderBookFullSnapshotKeyPrefix + productId).Bytes()
 	if err != nil {
 		if err == redis.Nil {

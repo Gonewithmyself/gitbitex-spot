@@ -108,10 +108,10 @@ func CheckToken(tokenStr string) (*models.User, error) {
 		return nil, err
 	}
 	if user == nil {
-		return nil, errors.New("bad token: 0x1")
+		return nil, errors.New("bad token")
 	}
 	if user.PasswordHash != passwordHash {
-		return nil, errors.New("bad token: 0x2")
+		return nil, errors.New("bad token")
 	}
 	return user, nil
 }

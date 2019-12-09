@@ -153,7 +153,7 @@ func (e *Engine) runApplier() {
 		case snapshot := <-e.snapshotReqCh:
 			// 接收到快照请求，判断是否真的需要执行快照
 			delta := orderOffset - snapshot.OrderOffset
-			if delta <= 0 {
+			if delta <= 1000 {
 				continue
 			}
 
@@ -232,7 +232,7 @@ func (e *Engine) runSnapshots() {
 
 	for {
 		select {
-		case <-time.After(10 * time.Second):
+		case <-time.After(30 * time.Second):
 			// make a new snapshot request
 			e.snapshotReqCh <- &Snapshot{
 				OrderOffset: orderOffset,

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/gitbitex/gitbitex-spot/matching"
 	logger "github.com/siddontang/go-log/log"
+	"sync"
 	"time"
 )
 
@@ -48,7 +49,7 @@ func newOrderBookStream(productId string, sub *subscription, logReader matching.
 	// try restore snapshot
 	snapshot, err := sharedSnapshotStore().getLastFull(productId)
 	if err != nil {
-		panic(err)
+		logger.Fatalf("get snapshot error: %v", err)
 	}
 	if snapshot != nil {
 		s.orderBook.Restore(snapshot)
@@ -119,10 +120,10 @@ func (s *OrderBookStream) runApplier() {
 
 			if lastLevel2Snapshot == nil || s.orderBook.seq-lastLevel2Snapshot.Seq > 10 {
 				lastLevel2Snapshot = s.orderBook.SnapshotLevel2(1000)
-				s.snapshotCh <- lastLevel2Snapshot
+				lastLevel2Snapshots.Store(s.productId, lastLevel2Snapshot)
 			}
 
-			if lastFullSnapshot == nil || s.orderBook.seq-lastFullSnapshot.Seq > 1000 {
+			if lastFullSnapshot == nil || s.orderBook.seq-lastFullSnapshot.Seq > 10000 {
 				lastFullSnapshot = s.orderBook.SnapshotFull()
 				s.snapshotCh <- lastFullSnapshot
 			}
@@ -134,7 +135,7 @@ func (s *OrderBookStream) runApplier() {
 		case <-time.After(200 * time.Millisecond):
 			if lastLevel2Snapshot == nil || s.orderBook.seq > lastLevel2Snapshot.Seq {
 				lastLevel2Snapshot = s.orderBook.SnapshotLevel2(1000)
-				s.snapshotCh <- lastLevel2Snapshot
+				lastLevel2Snapshots.Store(s.productId, lastLevel2Snapshot)
 			}
 		}
 	}
@@ -158,4 +159,14 @@ func (s *OrderBookStream) runSnapshots() {
 			}
 		}
 	}
+}
+
+var lastLevel2Snapshots = sync.Map{}
+
+func getLastLevel2Snapshot(productId string) *OrderBookLevel2Snapshot {
+	snapshot, found := lastLevel2Snapshots.Load(productId)
+	if !found {
+		return nil
+	}
+	return snapshot.(*OrderBookLevel2Snapshot)
 }
