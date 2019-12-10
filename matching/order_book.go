@@ -22,7 +22,6 @@ import (
 
 	"github.com/emirpasic/gods/maps/treemap"
 	"github.com/gitbitex/gitbitex-spot/models"
-	"github.com/gitbitex/gitbitex-spot/utils"
 	"github.com/shopspring/decimal"
 	"github.com/siddontang/go-log/log"
 )
@@ -65,145 +64,17 @@ type orderBookSnapshot struct {
 	// 去重窗口
 	OrderIdWindow Window
 }
-
-type depth struct {
-	// 保存所有正在book上的order
-	orders map[int64]*BookOrder
-
-	// 价格优先的priceLevel队列，用于获取level2
-	// Price -> *PriceLevel
-	levels *treemap.Map
-
-	// 价格优先，时间优先的订单队列，用于订单match
-	// priceOrderIdKey -> orderId
-	queue *treemap.Map
-}
-
-func (d *depth) iter(fn func(order *BookOrder) bool) {
-	for itr := d.queue.Iterator(); itr.Next(); {
-		id := itr.Value().(int64)
-		s := d.orders[id]
-		if !fn(s) {
-			break
-		}
-	}
-}
-
-func (d *depth) buy(b *BookOrder, o *orderBook) (logs []Log) {
-	d.iter(func(s *BookOrder) bool {
-		if s.Price.Cmp(b.Price) > 0 ||
-			b.Funds.IsZero() {
-			return false
-		}
-
-		price := s.Price
-		bsize := b.Funds.Div(price).Truncate(8)
-		if bsize.IsZero() {
-			return false
-		}
-
-		size := decimal.Min(bsize, s.Size)
-
-		if b.Type == models.OrderTypeLimit {
-			b.Size = b.Size.Sub(size)
-		}
-		funds := size.Mul(price)
-		b.Funds = b.Funds.Sub(funds)
-		if err := d.decrSize(s.OrderId, size); err != nil {
-			log.Fatal("decr order: ", err)
-		}
-
-		if s.Size.IsZero() {
-			doneLog := newDoneLog(o.nextLogSeq(), o.product.Id, s, s.Size, models.DoneReasonFilled)
-			logs = append(logs, doneLog)
-		}
-
-		matchLog := newMatchLog(o.nextLogSeq(), o.product.Id, o.nextTradeSeq(), b, s, price, size)
-		logs = append(logs, matchLog)
-		return true
-	})
-	return
-}
-
-func (d *depth) sell(s *BookOrder, o *orderBook) (logs []Log) {
-	d.iter(func(b *BookOrder) bool {
-		if b.Price.Cmp(s.Price) < 0 ||
-			s.Size.IsZero() {
-			return false
-		}
-
-		price := b.Price
-		size := decimal.Min(b.Size, s.Size)
-		s.Size = s.Size.Sub(size)
-		if err := d.decrSize(b.OrderId, size); err != nil {
-			log.Fatal("match: ", err)
-		}
-
-		if b.Size.IsZero() {
-			doneLog := newDoneLog(o.nextLogSeq(), o.product.Id, b, b.Size, models.DoneReasonFilled)
-			logs = append(logs, doneLog)
-		}
-
-		matchLog := newMatchLog(o.nextLogSeq(), o.product.Id, o.nextTradeSeq(), s, b, price, size)
-		logs = append(logs, matchLog)
-		return true
-	})
-	return
-}
-
-type PriceLevel struct {
-	Price      decimal.Decimal
-	Size       decimal.Decimal
-	OrderCount int64
-}
-
 type priceOrderIdKey struct {
 	price   decimal.Decimal
 	orderId int64
 }
 
-type BookOrder struct {
-	OrderId int64
-	UserID  int64
-	Size    decimal.Decimal
-	Funds   decimal.Decimal
-	Price   decimal.Decimal
-	Side    models.Side
-	Type    models.OrderType
-}
-
-func newBookOrder(order *models.Order) *BookOrder {
-	return &BookOrder{
-		OrderId: order.Id,
-		Size:    order.Size,
-		Funds:   order.Funds,
-		Price:   order.Price,
-		Side:    order.Side,
-		Type:    order.Type,
-	}
-}
-
-func (o *BookOrder) hasFilled() bool {
-	if o.Side == models.SideSell &&
-		o.Size.IsZero() {
-		return true
-	}
-
-	if o.Side == models.SideBuy &&
-		o.Funds.IsZero() {
-		return true
-	}
-	return false
-}
-
 func NewOrderBook(product *models.Product) *orderBook {
 	asks := &depth{
-		levels: treemap.NewWith(utils.DecimalAscComparator),
 		queue:  treemap.NewWith(priceOrderIdKeyAscComparator),
 		orders: map[int64]*BookOrder{},
 	}
 	bids := &depth{
-		levels: treemap.NewWith(utils.DecimalDescComparator),
 		queue:  treemap.NewWith(priceOrderIdKeyDescComparator),
 		orders: map[int64]*BookOrder{},
 	}
@@ -214,49 +85,6 @@ func NewOrderBook(product *models.Product) *orderBook {
 		orderIdWindow: newWindow(0, orderIdWindowCap),
 	}
 	return orderBook
-}
-
-func (o *orderBook) afterBuy(order *BookOrder) (logs []Log) {
-	if order.Type == models.OrderTypeMarket {
-		order.Price = decimal.Zero
-	}
-	if order.Funds.IsZero() {
-		// done
-		logs = append(logs,
-			newDoneLog(o.nextLogSeq(), o.product.Id, order,
-				decimal.Zero, models.DoneReasonFilled))
-		return
-	}
-
-	if order.Size.GreaterThan(decimal.Zero) {
-		// insert and open
-		o.depths[order.Side].add(*order)
-		logs = append(logs, newOpenLog(o.nextLogSeq(), o.product.Id, order))
-		return
-	}
-
-	// cancel
-	logs = append(logs, newDoneLog(o.nextLogSeq(), o.product.Id, order, order.Funds, models.DoneReasonCancelled))
-	return
-}
-
-func (o *orderBook) afterSell(order *BookOrder) (logs []Log) {
-	if order.Size.IsZero() {
-		logs = append(logs,
-			newDoneLog(o.nextLogSeq(), o.product.Id, order,
-				decimal.Zero, models.DoneReasonFilled))
-		return
-	}
-
-	if order.Type == models.OrderTypeLimit {
-		o.depths[order.Side].add(*order)
-		logs = append(logs, newOpenLog(o.nextLogSeq(), o.product.Id, order))
-		return
-	}
-
-	// cancel
-	logs = append(logs, newDoneLog(o.nextLogSeq(), o.product.Id, order, order.Size, models.DoneReasonCancelled))
-	return
 }
 
 func (o *orderBook) ApplyOrder(order *models.Order) (logs []Log) {
@@ -351,6 +179,151 @@ func (o *orderBook) Restore(snapshot *orderBookSnapshot) {
 	}
 }
 
+func (o *orderBook) afterBuy(order *BookOrder) (logs []Log) {
+	if order.Type == models.OrderTypeMarket {
+		order.Price = decimal.Zero
+	}
+	if order.Funds.IsZero() {
+		// done
+		logs = append(logs,
+			newDoneLog(o.nextLogSeq(), o.product.Id, order,
+				decimal.Zero, models.DoneReasonFilled))
+		return
+	}
+
+	if order.Size.GreaterThan(decimal.Zero) {
+		// insert and open
+		o.depths[order.Side].add(*order)
+		logs = append(logs, newOpenLog(o.nextLogSeq(), o.product.Id, order))
+		return
+	}
+
+	// cancel
+	logs = append(logs, newDoneLog(o.nextLogSeq(), o.product.Id, order, order.Funds, models.DoneReasonCancelled))
+	return
+}
+
+func (o *orderBook) afterSell(order *BookOrder) (logs []Log) {
+	if order.Size.IsZero() {
+		logs = append(logs,
+			newDoneLog(o.nextLogSeq(), o.product.Id, order,
+				decimal.Zero, models.DoneReasonFilled))
+		return
+	}
+
+	if order.Type == models.OrderTypeLimit {
+		o.depths[order.Side].add(*order)
+		logs = append(logs, newOpenLog(o.nextLogSeq(), o.product.Id, order))
+		return
+	}
+
+	// cancel
+	logs = append(logs, newDoneLog(o.nextLogSeq(), o.product.Id, order, order.Size, models.DoneReasonCancelled))
+	return
+}
+
+type depth struct {
+	// 保存所有正在book上的order
+	orders map[int64]*BookOrder
+
+	// 价格优先，时间优先的订单队列，用于订单match
+	// priceOrderIdKey -> orderId
+	queue *treemap.Map
+}
+
+func (d *depth) iter(fn func(order *BookOrder) bool) {
+	for itr := d.queue.Iterator(); itr.Next(); {
+		id := itr.Value().(int64)
+		s := d.orders[id]
+		if !fn(s) {
+			break
+		}
+	}
+}
+
+func (d *depth) buy(b *BookOrder, o *orderBook) (logs []Log) {
+	d.iter(func(s *BookOrder) bool {
+		if s.Price.Cmp(b.Price) > 0 ||
+			b.Funds.IsZero() {
+			return false
+		}
+
+		price := s.Price
+		bsize := b.Funds.Div(price).Truncate(8)
+		if bsize.IsZero() {
+			return false
+		}
+
+		size := decimal.Min(bsize, s.Size)
+
+		if b.Type == models.OrderTypeLimit {
+			b.Size = b.Size.Sub(size)
+		}
+		funds := size.Mul(price)
+		b.Funds = b.Funds.Sub(funds)
+		if err := d.decrSize(s.OrderId, size); err != nil {
+			log.Fatal("decr order: ", err)
+		}
+
+		if s.Size.IsZero() {
+			doneLog := newDoneLog(o.nextLogSeq(), o.product.Id, s, s.Size, models.DoneReasonFilled)
+			logs = append(logs, doneLog)
+		}
+
+		matchLog := newMatchLog(o.nextLogSeq(), o.product.Id, o.nextTradeSeq(), b, s, price, size)
+		logs = append(logs, matchLog)
+		return true
+	})
+	return
+}
+
+func (d *depth) sell(s *BookOrder, o *orderBook) (logs []Log) {
+	d.iter(func(b *BookOrder) bool {
+		if b.Price.Cmp(s.Price) < 0 ||
+			s.Size.IsZero() {
+			return false
+		}
+
+		price := b.Price
+		size := decimal.Min(b.Size, s.Size)
+		s.Size = s.Size.Sub(size)
+		if err := d.decrSize(b.OrderId, size); err != nil {
+			log.Fatal("match: ", err)
+		}
+
+		if b.Size.IsZero() {
+			doneLog := newDoneLog(o.nextLogSeq(), o.product.Id, b, b.Size, models.DoneReasonFilled)
+			logs = append(logs, doneLog)
+		}
+
+		matchLog := newMatchLog(o.nextLogSeq(), o.product.Id, o.nextTradeSeq(), s, b, price, size)
+		logs = append(logs, matchLog)
+		return true
+	})
+	return
+}
+
+type BookOrder struct {
+	OrderId int64
+	UserID  int64
+	Size    decimal.Decimal
+	Funds   decimal.Decimal
+	Price   decimal.Decimal
+	Side    models.Side
+	Type    models.OrderType
+}
+
+func newBookOrder(order *models.Order) *BookOrder {
+	return &BookOrder{
+		OrderId: order.Id,
+		Size:    order.Size,
+		Funds:   order.Funds,
+		Price:   order.Price,
+		Side:    order.Side,
+		Type:    order.Type,
+	}
+}
+
 func (o *orderBook) nextLogSeq() int64 {
 	o.logSeq++
 	return o.logSeq
@@ -363,21 +336,7 @@ func (o *orderBook) nextTradeSeq() int64 {
 
 func (d *depth) add(order BookOrder) {
 	d.orders[order.OrderId] = &order
-
 	d.queue.Put(&priceOrderIdKey{order.Price, order.OrderId}, order.OrderId)
-
-	val, found := d.levels.Get(order.Price)
-	if !found {
-		d.levels.Put(order.Price, &PriceLevel{
-			Price:      order.Price,
-			Size:       order.Size,
-			OrderCount: 1,
-		})
-	} else {
-		level := val.(*PriceLevel)
-		level.Size = level.Size.Add(order.Size)
-		level.OrderCount++
-	}
 }
 
 func (d *depth) decrSize(orderId int64, size decimal.Decimal) error {
@@ -390,26 +349,12 @@ func (d *depth) decrSize(orderId int64, size decimal.Decimal) error {
 		return errors.New(fmt.Sprintf("order %v Size %v less than %v", orderId, order.Size, size))
 	}
 
-	var removed bool
 	order.Size = order.Size.Sub(size)
 	if order.Size.IsZero() {
 		delete(d.orders, orderId)
-		removed = true
-	}
-
-	// 订单被移除出orderBook，清理priceTime队列
-	if removed {
 		d.queue.Remove(&priceOrderIdKey{order.Price, order.OrderId})
 	}
 
-	val, _ := d.levels.Get(order.Price)
-	level := val.(*PriceLevel)
-	level.Size = level.Size.Sub(size)
-	if level.Size.IsZero() {
-		d.levels.Remove(order.Price)
-	} else if removed {
-		level.OrderCount--
-	}
 	return nil
 }
 
