@@ -43,6 +43,7 @@ func newTickerStream(productId string, sub *subscription, logReader matching.Log
 		lastTickerTime: time.Now().Unix() - intervalSec,
 	}
 	s.logReader.RegisterObserver(s)
+	initTick(productId)
 	return s
 }
 
@@ -134,4 +135,45 @@ func getLastTicker(productId string) *TickerMessage {
 		return nil
 	}
 	return ticker.(*TickerMessage)
+}
+
+func initTick(pid string) {
+	ticks24h, err := service.GetTicksByProductId(pid, 1*60, 24)
+	if err != nil {
+		return
+	}
+	tick24h := mergeTicks(ticks24h)
+	if tick24h == nil {
+		tick24h = &models.Tick{}
+	}
+
+	ticks30d, err := service.GetTicksByProductId(pid, 24*60, 30)
+	if err != nil {
+		return
+	}
+	tick30d := mergeTicks(ticks30d)
+	if tick30d == nil {
+		tick30d = &models.Tick{}
+	}
+
+	log, err := service.GetLastTradeByProductId(pid)
+	if err != nil {
+		return
+	}
+
+	lastTickers.Store(pid, &TickerMessage{
+		Type:      "ticker",
+		TradeId:   log.Id,
+		Sequence:  log.LogSeq,
+		Time:      log.Time.Format(time.RFC3339),
+		ProductId: pid,
+		Price:     log.Price.String(),
+		Side:      log.Side.String(),
+		LastSize:  log.Size.String(),
+		Open24h:   tick24h.Open.String(),
+		Low24h:    tick24h.Low.String(),
+		Volume24h: tick24h.Volume.String(),
+		Volume30d: tick30d.Volume.String(),
+	})
+
 }

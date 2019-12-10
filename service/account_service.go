@@ -22,8 +22,12 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const (
+	db_account = "db_account"
+)
+
 func ExecuteBill(userId int64, currency string) error {
-	tx, err := mysql.SharedStore().BeginTx()
+	tx, err := mysql.SharedStore(db_account).BeginTx()
 	if err != nil {
 		return err
 	}
@@ -142,11 +146,11 @@ func HasEnoughBalance(userId int64, currency string, size decimal.Decimal) (bool
 }
 
 func GetAccount(userId int64, currency string) (*models.Account, error) {
-	return mysql.SharedStore().GetAccount(userId, currency)
+	return mysql.SharedStore(db_account).GetAccount(userId, currency)
 }
 
 func GetAccountsByUserId(userId int64) ([]*models.Account, error) {
-	return mysql.SharedStore().GetAccountsByUserId(userId)
+	return mysql.SharedStore(db_account).GetAccountsByUserId(userId)
 }
 
 func AddDelayBill(store models.Store, userId int64, currency string, available, hold decimal.Decimal, billType models.BillType, notes string) (*models.Bill, error) {
@@ -168,7 +172,7 @@ func AddBills(bills []*models.Bill) error {
 		return nil
 	}
 
-	err := mysql.SharedStore().AddBills(bills)
+	err := mysql.SharedStore(db_account).AddBills(bills)
 	if err != nil {
 		return err
 	}
@@ -176,23 +180,24 @@ func AddBills(bills []*models.Bill) error {
 }
 
 func GetUnsettledBills() ([]*models.Bill, error) {
-	return mysql.SharedStore().GetUnsettledBills()
+	return mysql.SharedStore(db_account).GetUnsettledBills()
 }
 
-func AddOffsetBills(bills []*models.OffsetBill) error {
-	tx, err := mysql.SharedStore().BeginTx()
+func AddOffsetBills(group string, bills []*models.OffsetBill) error {
+	tx, err := mysql.SharedStore(db_account).BeginTx()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	// err = tx.AddOffsetBills(bills)
-	// if err != nil {
-	// 	return err
-	// }
+	err = tx.AddOffsetBills(bills)
+	if err != nil {
+		return err
+	}
 
 	l := len(bills)
 	last := bills[l-1].Offset
-	off, err := tx.GetOffsetForUpdate(last.Group, last.Partition)
+	last.Group = group
+	off, err := tx.GetOffsetForUpdate(group, last.Partition)
 	if err != nil {
 		return err
 	}

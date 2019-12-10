@@ -21,14 +21,14 @@ import (
 )
 
 func GetLastTickByProductId(productId string, granularity int64) (*models.Tick, error) {
-	return mysql.SharedStore().GetLastTickByProductId(productId, granularity)
+	return mysql.SharedStore(productId).GetLastTickByProductId(productId, granularity)
 }
 
 func GetTicksByProductId(productId string, granularity int64, limit int) ([]*models.Tick, error) {
-	return mysql.SharedStore().GetTicksByProductId(productId, granularity, limit)
+	return mysql.SharedStore(productId).GetTicksByProductId(productId, granularity, limit)
 }
 
-func AddTicks(ticks map[int64][]*models.Tick) (err error) {
+func AddTicks(productId string, ticks map[int64][]*models.Tick) (err error) {
 	// return mysql.SharedStore().AddTicks(ticks)
 	// var min := math.
 	var (
@@ -42,7 +42,7 @@ func AddTicks(ticks map[int64][]*models.Tick) (err error) {
 	}
 
 	last := ticks[1][min]
-	tx, err := mysql.SharedStore().BeginTx()
+	tx, err := mysql.SharedStore(productId).BeginTx()
 	if err != nil {
 		return err
 	}

@@ -20,13 +20,17 @@ import (
 )
 
 func GetTradesByProductId(productId string, count int) ([]*models.Trade, error) {
-	return mysql.SharedStore().GetTradesByProductId(productId, count)
+	return mysql.SharedStore(productId).GetTradesByProductId(productId, count)
 }
 
-func AddTrades(trades []*models.Trade) error {
+func GetLastTradeByProductId(productId string) (*models.Trade, error) {
+	return mysql.SharedStore(productId).GetLastTradeByProductId(productId)
+}
+
+func AddTrades(productId string, trades []*models.Trade) error {
 	if len(trades) == 0 {
 		return nil
 	}
 
-	return mysql.SharedStore().AddTrades(trades)
+	return mysql.SharedStore(productId).AddTrades(trades)
 }

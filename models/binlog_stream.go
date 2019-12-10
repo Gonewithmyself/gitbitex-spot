@@ -16,14 +16,16 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
+	"reflect"
+	"time"
+
 	"github.com/gitbitex/gitbitex-spot/conf"
 	"github.com/gitbitex/gitbitex-spot/utils"
 	"github.com/go-redis/redis"
 	"github.com/shopspring/decimal"
 	"github.com/siddontang/go-log/log"
 	"github.com/siddontang/go-mysql/canal"
-	"reflect"
-	"time"
 )
 
 type BinLogStream struct {
@@ -70,7 +72,7 @@ func (s *BinLogStream) OnRow(e *canal.RowsEvent) error {
 		}
 
 	case "g_account":
-		log.Println("---- onrow")
+		fmt.Println("---- onrow")
 		var n = 0
 		if e.Action == "update" {
 			n = 1

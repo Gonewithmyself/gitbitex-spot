@@ -51,7 +51,7 @@ func CreateUser(email, password string) (*models.User, error) {
 		Email:        email,
 		PasswordHash: encryptPassword(password),
 	}
-	return user, mysql.SharedStore().AddUser(user)
+	return user, mysql.SharedStore(db_account).AddUser(user)
 }
 
 func RefreshAccessToken(email, password string) (string, error) {
@@ -125,11 +125,11 @@ func ChangePassword(email, newPassword string) error {
 		return errors.New("user not found")
 	}
 	user.PasswordHash = encryptPassword(newPassword)
-	return mysql.SharedStore().UpdateUser(user)
+	return mysql.SharedStore(db_account).UpdateUser(user)
 }
 
 func GetUserByEmail(email string) (*models.User, error) {
-	return mysql.SharedStore().GetUserByEmail(email)
+	return mysql.SharedStore(db_account).GetUserByEmail(email)
 }
 
 func GetUserByPassword(email, password string) (*models.User, error) {

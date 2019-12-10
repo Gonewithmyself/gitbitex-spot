@@ -44,8 +44,8 @@ func (s *Store) AddTrades(trades []*models.Trade) error {
 	}
 	var valueStrings []string
 	for _, trade := range trades {
-		valueString := fmt.Sprintf("('%v', %v, %v, %v, %v, '%v', '%v',%v,%v)",
-			trade.ProductId, trade.TakerOrderId, trade.MakerOrderId, trade.Price, trade.Size, trade.Side,
+		valueString := fmt.Sprintf("(%v, %v, %v, %v, '%v', '%v',%v,%v)",
+			trade.TakerOrderId, trade.MakerOrderId, trade.Price, trade.Size, trade.Side,
 			trade.Time, trade.LogOffset, trade.LogSeq)
 		valueStrings = append(valueStrings, valueString)
 	}

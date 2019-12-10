@@ -22,11 +22,11 @@ import (
 // var ids = map[string]uint64{}
 
 func GetProductById(id string) (*models.Product, error) {
-	return mysql.SharedStore().GetProductById(id)
+	return mysql.SharedStore(db_account).GetProductById(id)
 }
 
 func GetProducts() ([]*models.Product, error) {
-	return mysql.SharedStore().GetProducts()
+	return mysql.SharedStore(db_account).GetProducts()
 }
 
 // func ProductID(id string) uint64 {

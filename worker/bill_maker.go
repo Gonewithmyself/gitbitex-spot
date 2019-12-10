@@ -18,6 +18,7 @@ type BillMaker struct {
 	logReader matching.LogReader
 	logOffset int64
 	logSeq    int64
+	group     string
 }
 
 type billItem struct {
@@ -27,13 +28,18 @@ type billItem struct {
 	product string
 }
 
+const (
+	db_account = "db_account"
+)
+
 func NewBillMaker(logReader matching.LogReader) *BillMaker {
 	t := &BillMaker{
 		billCh:    make(chan *models.OffsetBill, 1000),
 		logReader: logReader,
+		group:     "billmaker_" + logReader.GetProductId(),
 	}
 
-	lastBill, err := mysql.SharedStore().GetLastOffset(logReader.GetProductId(), 0)
+	lastBill, err := mysql.SharedStore(db_account).GetLastOffset(t.group, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -148,9 +154,6 @@ func (t *BillMaker) OnDoneLog(log *matching.DoneLog, offset int64) {
 	funds := log.RemainingSize
 	if log.Side == models.SideBuy {
 		curr = last
-		if log.Price != decimal.Zero {
-			funds = funds.Mul(log.Price)
-		}
 	}
 
 	bill := &models.OffsetBill{
@@ -180,7 +183,7 @@ func (t *BillMaker) flusher() {
 			}
 
 			for {
-				err := service.AddOffsetBills(bills)
+				err := service.AddOffsetBills(t.group, bills)
 				if err != nil {
 					log.Error(err)
 					time.Sleep(time.Second)

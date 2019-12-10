@@ -61,7 +61,7 @@ func NewTickMaker(productId string, logReader matching.LogReader) *TickMaker {
 		}
 	}
 
-	last, err := mysql.SharedStore().GetLastOffset("kline_"+logReader.GetProductId(), 0)
+	last, err := mysql.SharedStore(productId).GetLastOffset("kline_"+logReader.GetProductId(), 0)
 	if err != nil {
 		panic(err)
 	}
@@ -123,6 +123,7 @@ func (t *TickMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
 func (t *TickMaker) flusher() {
 	var tickM = make(map[int64][]*models.Tick, len(minutes))
 	var count int
+	pid := t.logReader.GetProductId()
 	for {
 		select {
 		case tick := <-t.tickCh:
@@ -134,7 +135,7 @@ func (t *TickMaker) flusher() {
 			}
 
 			for {
-				err := service.AddTicks(tickM)
+				err := service.AddTicks(pid, tickM)
 				if err != nil {
 					log.Error(err)
 					// retry

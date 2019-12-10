@@ -85,7 +85,7 @@ func PlaceOrder(userId int64, clientOid string, productId string, orderType mode
 	}
 
 	// tx
-	db, err := mysql.SharedStore().BeginTx()
+	db, err := mysql.SharedStore(db_account).BeginTx()
 	if err != nil {
 		return nil, err
 	}
@@ -105,12 +105,12 @@ func PlaceOrder(userId int64, clientOid string, productId string, orderType mode
 }
 
 func UpdateOrderStatus(orderId int64, oldStatus, newStatus models.OrderStatus) (bool, error) {
-	return mysql.SharedStore().UpdateOrderStatus(orderId, oldStatus, newStatus)
+	return mysql.SharedStore(db_account).UpdateOrderStatus(orderId, oldStatus, newStatus)
 }
 
-func ExecuteFill(orderId int64, sender Sender) error {
+func ExecuteFill(orderId int64) error {
 	// tx
-	db, err := mysql.SharedStore().BeginTx()
+	db, err := mysql.SharedStore(db_account).BeginTx()
 	if err != nil {
 		return err
 	}
@@ -135,66 +135,20 @@ func ExecuteFill(orderId int64, sender Sender) error {
 		return fmt.Errorf("product not found: %v", order.ProductId)
 	}
 
-	fills, err := mysql.SharedStore().GetUnsettledFillsByOrderId(orderId)
+	fills, err := db.GetUnsettledFillsByOrderId(orderId)
 	if err != nil {
 		return err
 	}
 	if len(fills) == 0 {
 		return nil
 	}
-
-	var bills = make([]interface{}, 0, len(fills))
 	for _, fill := range fills {
 		fill.Settled = true
-
-		notes := fmt.Sprintf("%v-%v", fill.OrderId, fill.Id)
 
 		if !fill.Done {
 			executedValue := fill.Size.Mul(fill.Price)
 			order.ExecutedValue = order.ExecutedValue.Add(executedValue)
 			order.FilledSize = order.FilledSize.Add(fill.Size)
-
-			if order.Side == models.SideBuy {
-				// 买单，incr base
-				bills = append(bills, &models.Bill{
-					UserId:    order.UserId,
-					Currency:  product.BaseCurrency,
-					Available: fill.Size,
-					Hold:      decimal.Zero,
-					Type:      models.BillTypeTrade,
-					Notes:     notes,
-				})
-
-				// 买单，decr quote
-				bills = append(bills, &models.Bill{
-					UserId:    order.UserId,
-					Currency:  product.QuoteCurrency,
-					Available: decimal.Zero,
-					Hold:      executedValue.Neg(),
-					Type:      models.BillTypeTrade,
-					Notes:     notes,
-				})
-
-			} else {
-				// 卖单，decr base
-				bills = append(bills, &models.Bill{
-					UserId:    order.UserId,
-					Currency:  product.BaseCurrency,
-					Available: decimal.Zero,
-					Hold:      fill.Size.Neg(),
-					Type:      models.BillTypeTrade,
-					Notes:     notes,
-				})
-				bills = append(bills, &models.Bill{
-					UserId:    order.UserId,
-					Currency:  product.QuoteCurrency,
-					Available: executedValue,
-					Hold:      decimal.Zero,
-					Type:      models.BillTypeTrade,
-					Notes:     notes,
-				})
-			}
-
 		} else {
 			if fill.DoneReason == models.DoneReasonCancelled {
 				order.Status = models.OrderStatusCancelled
@@ -203,42 +157,8 @@ func ExecuteFill(orderId int64, sender Sender) error {
 			} else {
 				log.Fatalf("unknown done reason: %v", fill.DoneReason)
 			}
-
-			if order.Side == models.SideBuy {
-				// 如果是是买单，需要解冻剩余的funds
-				remainingFunds := order.Funds.Sub(order.ExecutedValue)
-				if remainingFunds.GreaterThan(decimal.Zero) {
-					bills = append(bills, &models.Bill{
-						UserId:    order.UserId,
-						Currency:  product.QuoteCurrency,
-						Available: remainingFunds,
-						Hold:      remainingFunds.Neg(),
-						Type:      models.BillTypeTrade,
-						Notes:     notes,
-					})
-				}
-
-			} else {
-				// 如果是卖单，解冻剩余的size
-				remainingSize := order.Size.Sub(order.FilledSize)
-				if remainingSize.GreaterThan(decimal.Zero) {
-					bills = append(bills, &models.Bill{
-						UserId:    order.UserId,
-						Currency:  product.BaseCurrency,
-						Available: remainingSize,
-						Hold:      remainingSize.Neg(),
-						Type:      models.BillTypeTrade,
-						Notes:     notes,
-					})
-				}
-			}
-
 			break
 		}
-	}
-
-	if err := sender.Send(bills...); err != nil {
-		return err
 	}
 
 	err = db.UpdateOrder(order)
@@ -257,14 +177,14 @@ func ExecuteFill(orderId int64, sender Sender) error {
 }
 
 func GetOrderById(orderId int64) (*models.Order, error) {
-	return mysql.SharedStore().GetOrderById(orderId)
+	return mysql.SharedStore(db_account).GetOrderById(orderId)
 }
 
 func GetOrderByClientOid(userId int64, clientOid string) (*models.Order, error) {
-	return mysql.SharedStore().GetOrderByClientOid(userId, clientOid)
+	return mysql.SharedStore(db_account).GetOrderByClientOid(userId, clientOid)
 }
 
 func GetOrdersByUserId(userId int64, statuses []models.OrderStatus, side *models.Side, productId string,
 	beforeId, afterId int64, limit int) ([]*models.Order, error) {
-	return mysql.SharedStore().GetOrdersByUserId(userId, statuses, side, productId, beforeId, afterId, limit)
+	return mysql.SharedStore(db_account).GetOrdersByUserId(userId, statuses, side, productId, beforeId, afterId, limit)
 }

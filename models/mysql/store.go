@@ -16,31 +16,45 @@ package mysql
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/gitbitex/gitbitex-spot/conf"
 	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/jinzhu/gorm"
-	"github.com/prometheus/common/log"
-	"reflect"
-	"sync"
 )
 
-var gdb *gorm.DB
-var store models.Store
-var storeOnce sync.Once
+var dbs sync.Map
+var loc sync.Mutex
 
 type Store struct {
 	db *gorm.DB
 }
 
-func SharedStore() models.Store {
-	storeOnce.Do(func() {
-		err := initDb()
-		if err != nil {
-			panic(err)
-		}
-		store = NewStore(gdb)
-	})
+func get(dbname string) models.Store {
+	val, ok := dbs.Load(dbname)
+	if ok {
+		return val.(models.Store)
+	}
+
+	loc.Lock()
+	defer loc.Unlock()
+	val, ok = dbs.Load(dbname)
+	if ok {
+		return val.(models.Store)
+	}
+
+	db, err := initDb(dbname)
+	if err != nil {
+		panic(err)
+	}
+
+	store := NewStore(db)
+	dbs.Store(dbname, store)
 	return store
+}
+
+func SharedStore(dbname string) models.Store {
+	return get(dbname)
 }
 
 func NewStore(db *gorm.DB) *Store {
@@ -49,48 +63,52 @@ func NewStore(db *gorm.DB) *Store {
 	}
 }
 
-func initDb() error {
+func initDb(dbname string) (db *gorm.DB, err error) {
 	cfg, err := conf.GetConfig()
 	if err != nil {
-		return err
+		return
+	}
+
+	if dbname == "" {
+		dbname = cfg.DataSource.Database
 	}
 
 	url := fmt.Sprintf("%v:%v@tcp(%v)/%v?charset=utf8&parseTime=True&loc=Local",
-		cfg.DataSource.User, cfg.DataSource.Password, cfg.DataSource.Addr, cfg.DataSource.Database)
-	gdb, err = gorm.Open(cfg.DataSource.DriverName, url)
+		cfg.DataSource.User, cfg.DataSource.Password, cfg.DataSource.Addr, dbname)
+	db, err = gorm.Open(cfg.DataSource.DriverName, url)
 	if err != nil {
-		return err
+		return
 	}
 
-	gdb.SingularTable(true)
-	gdb.DB().SetMaxIdleConns(10)
-	gdb.DB().SetMaxOpenConns(50)
+	db.SingularTable(true)
+	db.DB().SetMaxIdleConns(10)
+	db.DB().SetMaxOpenConns(50)
 
 	gorm.DefaultTableNameHandler = func(db *gorm.DB, defaultTableName string) string {
 		return "g_" + defaultTableName
 	}
 
-	if cfg.DataSource.EnableAutoMigrate {
-		var tables = []interface{}{
-			&models.Account{},
-			&models.Order{},
-			&models.Product{},
-			&models.Trade{},
-			&models.Fill{},
-			&models.User{},
-			&models.Bill{},
-			&models.Tick{},
-			&models.Config{},
-		}
-		for _, table := range tables {
-			log.Infof("migrating database, table: %v", reflect.TypeOf(table))
-			if err = gdb.AutoMigrate(table).Error; err != nil {
-				return err
-			}
-		}
-	}
+	// if cfg.DataSource.EnableAutoMigrate {
+	// 	var tables = []interface{}{
+	// 		&models.Account{},
+	// 		&models.Order{},
+	// 		&models.Product{},
+	// 		&models.Trade{},
+	// 		&models.Fill{},
+	// 		&models.User{},
+	// 		&models.Bill{},
+	// 		&models.Tick{},
+	// 		&models.Config{},
+	// 	}
+	// 	for _, table := range tables {
+	// 		log.Infof("migrating database, table: %v", reflect.TypeOf(table))
+	// 		if err = gdb.AutoMigrate(table).Error; err != nil {
+	// 			return err
+	// 		}
+	// 	}
+	// }
 
-	return nil
+	return
 }
 
 func (s *Store) BeginTx() (models.Store, error) {

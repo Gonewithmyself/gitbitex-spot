@@ -212,7 +212,6 @@ type Trade struct {
 	Id           int64 `gorm:"column:id;primary_key;AUTO_INCREMENT"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
-	ProductId    string
 	TakerOrderId int64
 	MakerOrderId int64
 	Price        decimal.Decimal `sql:"type:decimal(32,16);"`

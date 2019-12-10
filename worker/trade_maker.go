@@ -36,7 +36,7 @@ func NewTradeMaker(logReader matching.LogReader) *TradeMaker {
 		logReader: logReader,
 	}
 
-	lastTrade, err := mysql.SharedStore().GetLastTradeByProductId(logReader.GetProductId())
+	lastTrade, err := mysql.SharedStore(logReader.GetProductId()).GetLastTradeByProductId(logReader.GetProductId())
 	if err != nil {
 		panic(err)
 	}
@@ -68,7 +68,6 @@ func (t *TradeMaker) OnDoneLog(log *matching.DoneLog, offset int64) {
 func (t *TradeMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
 	t.tradeCh <- &models.Trade{
 		Id:           log.TradeId,
-		ProductId:    log.ProductId,
 		TakerOrderId: log.TakerOrderId,
 		MakerOrderId: log.MakerOrderId,
 		Price:        log.Price,
@@ -83,7 +82,7 @@ func (t *TradeMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
 // 保存撮合日志
 func (t *TradeMaker) runFlusher() {
 	var trades []*models.Trade
-
+	pid := t.logReader.GetProductId()
 	for {
 		select {
 		case trade := <-t.tradeCh:
@@ -95,7 +94,7 @@ func (t *TradeMaker) runFlusher() {
 
 			// 确保入库成功
 			for {
-				err := service.AddTrades(trades)
+				err := service.AddTrades(pid, trades)
 				if err != nil {
 					log.Error(err)
 					time.Sleep(time.Second)

@@ -38,15 +38,12 @@ func NewFillExecutor() *FillExecutor {
 	f := &FillExecutor{
 		workerChs: [fillWorkerNum]chan *models.Fill{},
 	}
-
-	config, _ := conf.GetConfig()
 	// 初始化和fillWorkersNum一样数量的routine，每个routine负责一个chan
 	for i := 0; i < fillWorkerNum; i++ {
 		f.workerChs[i] = make(chan *models.Fill, 512)
 
 		go func(idx int) {
 			settledOrderCache, err := lru.New(1000)
-			sender := service.NewSender(billTopic, config.Kafka.Brokers)
 			if err != nil {
 				panic(err)
 			}
@@ -71,7 +68,8 @@ func NewFillExecutor() *FillExecutor {
 						continue
 					}
 
-					err = service.ExecuteFill(fill.OrderId, sender)
+					err = service.ExecuteFill(fill.OrderId)
+					// todo publish order status
 					if err != nil {
 						log.Error(err)
 					}

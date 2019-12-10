@@ -36,7 +36,7 @@ func NewFillMaker(logReader matching.LogReader) *FillMaker {
 		logReader: logReader,
 	}
 
-	lastFill, err := mysql.SharedStore().GetLastFillByProductId(logReader.GetProductId())
+	lastFill, err := mysql.SharedStore(db_account).GetLastFillByProductId(logReader.GetProductId())
 	if err != nil {
 		panic(err)
 	}
