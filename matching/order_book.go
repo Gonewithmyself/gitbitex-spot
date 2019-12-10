@@ -103,6 +103,10 @@ func (d *depth) buy(b *BookOrder, o *orderBook) (logs []Log) {
 		}
 
 		size := decimal.Min(bsize, s.Size)
+
+		if b.Type == models.OrderTypeLimit {
+			b.Size = b.Size.Sub(size)
+		}
 		funds := size.Mul(price)
 		b.Funds = b.Funds.Sub(funds)
 		if err := d.decrSize(s.OrderId, size); err != nil {
@@ -110,26 +114,11 @@ func (d *depth) buy(b *BookOrder, o *orderBook) (logs []Log) {
 		}
 
 		if s.Size.IsZero() {
-			doneLog := &DoneLog{
-				Base:          Base{s.UserID, 0, LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
-				OrderId:       s.OrderId,
-				Price:         s.Price,
-				RemainingSize: s.Size,
-				Reason:        models.DoneReasonFilled,
-				Side:          s.Side,
-			}
+			doneLog := newDoneLog(o.nextLogSeq(), o.product.Id, s, s.Size, models.DoneReasonFilled)
 			logs = append(logs, doneLog)
 		}
 
-		matchLog := &MatchLog{
-			Base:         Base{b.UserID, s.UserID, LogTypeMatch, o.nextLogSeq(), o.product.Id, time.Now()},
-			TradeId:      o.nextTradeSeq(),
-			TakerOrderId: b.OrderId,
-			MakerOrderId: s.OrderId,
-			Side:         s.Side,
-			Price:        price,
-			Size:         size,
-		}
+		matchLog := newMatchLog(o.nextLogSeq(), o.product.Id, o.nextTradeSeq(), b, s, price, size)
 		logs = append(logs, matchLog)
 		return true
 	})
@@ -144,33 +133,18 @@ func (d *depth) sell(s *BookOrder, o *orderBook) (logs []Log) {
 		}
 
 		price := b.Price
-		size := decimal.Min(price, s.Size)
+		size := decimal.Min(b.Size, s.Size)
 		s.Size = s.Size.Sub(size)
 		if err := d.decrSize(b.OrderId, size); err != nil {
 			log.Fatal("match: ", err)
 		}
 
 		if b.Size.IsZero() {
-			doneLog := &DoneLog{
-				Base:          Base{b.UserID, 0, LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
-				OrderId:       b.OrderId,
-				Price:         b.Price,
-				RemainingSize: b.Size,
-				Reason:        models.DoneReasonFilled,
-				Side:          b.Side,
-			}
+			doneLog := newDoneLog(o.nextLogSeq(), o.product.Id, b, b.Size, models.DoneReasonFilled)
 			logs = append(logs, doneLog)
 		}
 
-		matchLog := &MatchLog{
-			Base:         Base{s.UserID, b.UserID, LogTypeMatch, o.nextLogSeq(), o.product.Id, time.Now()},
-			TradeId:      o.nextTradeSeq(),
-			TakerOrderId: s.OrderId,
-			MakerOrderId: b.OrderId,
-			Side:         b.Side,
-			Price:        price,
-			Size:         size,
-		}
+		matchLog := newMatchLog(o.nextLogSeq(), o.product.Id, o.nextTradeSeq(), s, b, price, size)
 		logs = append(logs, matchLog)
 		return true
 	})
@@ -196,6 +170,17 @@ type BookOrder struct {
 	Price   decimal.Decimal
 	Side    models.Side
 	Type    models.OrderType
+}
+
+func newBookOrder(order *models.Order) *BookOrder {
+	return &BookOrder{
+		OrderId: order.Id,
+		Size:    order.Size,
+		Funds:   order.Funds,
+		Price:   order.Price,
+		Side:    order.Side,
+		Type:    order.Type,
+	}
 }
 
 func (o *BookOrder) hasFilled() bool {
@@ -231,6 +216,49 @@ func NewOrderBook(product *models.Product) *orderBook {
 	return orderBook
 }
 
+func (o *orderBook) afterBuy(order *BookOrder) (logs []Log) {
+	if order.Type == models.OrderTypeMarket {
+		order.Price = decimal.Zero
+	}
+	if order.Funds.IsZero() {
+		// done
+		logs = append(logs,
+			newDoneLog(o.nextLogSeq(), o.product.Id, order,
+				decimal.Zero, models.DoneReasonFilled))
+		return
+	}
+
+	if order.Size.GreaterThan(decimal.Zero) {
+		// insert and open
+		o.depths[order.Side].add(*order)
+		logs = append(logs, newOpenLog(o.nextLogSeq(), o.product.Id, order))
+		return
+	}
+
+	// cancel
+	logs = append(logs, newDoneLog(o.nextLogSeq(), o.product.Id, order, order.Funds, models.DoneReasonCancelled))
+	return
+}
+
+func (o *orderBook) afterSell(order *BookOrder) (logs []Log) {
+	if order.Size.IsZero() {
+		logs = append(logs,
+			newDoneLog(o.nextLogSeq(), o.product.Id, order,
+				decimal.Zero, models.DoneReasonFilled))
+		return
+	}
+
+	if order.Type == models.OrderTypeLimit {
+		o.depths[order.Side].add(*order)
+		logs = append(logs, newOpenLog(o.nextLogSeq(), o.product.Id, order))
+		return
+	}
+
+	// cancel
+	logs = append(logs, newDoneLog(o.nextLogSeq(), o.product.Id, order, order.Size, models.DoneReasonCancelled))
+	return
+}
+
 func (o *orderBook) ApplyOrder(order *models.Order) (logs []Log) {
 	// 订单去重，防止订单被重复提交到撮合引擎
 	err := o.orderIdWindow.put(order.Id)
@@ -238,16 +266,7 @@ func (o *orderBook) ApplyOrder(order *models.Order) (logs []Log) {
 		log.Error(err)
 		return logs
 	}
-
-	takerOrder := &BookOrder{
-		OrderId: order.Id,
-		UserID:  order.UserId,
-		Size:    order.Size,
-		Funds:   order.Funds,
-		Price:   order.Price,
-		Side:    order.Side,
-		Type:    order.Type,
-	}
+	takerOrder := newBookOrder(order)
 
 	// 如果是market-buy订单，将price设置成无限制高，如果是market-sell，将price设置成0，这样可以确保价格一定会交叉
 	if takerOrder.Type == models.OrderTypeMarket {
@@ -261,51 +280,13 @@ func (o *orderBook) ApplyOrder(order *models.Order) (logs []Log) {
 	makerDepth := o.depths[takerOrder.Side.Opposite()]
 	if takerOrder.Side == models.SideBuy {
 		logs = makerDepth.buy(takerOrder, o)
+		logs = append(logs, o.afterBuy(takerOrder)...)
 	} else if takerOrder.Side == models.SideSell {
 		logs = makerDepth.sell(takerOrder, o)
+		logs = append(logs, o.afterSell(takerOrder)...)
 	} else {
 		log.Fatal("unknown order side", takerOrder)
 	}
-
-	if takerOrder.Type == models.OrderTypeLimit && takerOrder.Size.GreaterThan(decimal.Zero) {
-		// limit taker还有未成交的size，则把taker放入orderBook
-		o.depths[takerOrder.Side].add(*takerOrder)
-
-		openLog := &OpenLog{
-			Base:          Base{0, 0, LogTypeOpen, o.nextLogSeq(), o.product.Id, time.Now()},
-			OrderId:       takerOrder.OrderId,
-			RemainingSize: takerOrder.Size,
-			Price:         takerOrder.Price,
-			Side:          takerOrder.Side,
-		}
-		logs = append(logs, openLog)
-		return
-	}
-	var price = takerOrder.Price
-	var remainingSize = takerOrder.Size
-	var reason = models.DoneReasonFilled
-
-	if takerOrder.Type == models.OrderTypeMarket {
-		price = decimal.Zero
-		if takerOrder.Side == models.SideBuy {
-			remainingSize = takerOrder.Funds
-		}
-
-		if !takerOrder.hasFilled() {
-			reason = models.DoneReasonCancelled
-		}
-	}
-
-	doneLog := &DoneLog{
-		Base:          Base{takerOrder.UserID, 0, LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
-		OrderId:       takerOrder.OrderId,
-		Price:         price,
-		RemainingSize: remainingSize,
-		Reason:        reason,
-		Side:          takerOrder.Side,
-	}
-	logs = append(logs, doneLog)
-
 	return
 }
 
