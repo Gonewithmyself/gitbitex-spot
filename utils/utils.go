@@ -15,6 +15,8 @@
 package utils
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/shopspring/decimal"
 	"strconv"
 	"unicode"
@@ -90,4 +92,9 @@ func SnakeCase(s string) string {
 	}
 
 	return string(out)
+}
+
+func Pjson(obj interface{}) {
+	d, _ := json.Marshal(obj)
+	fmt.Println(string(d))
 }

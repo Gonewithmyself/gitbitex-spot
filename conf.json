@@ -2,7 +2,7 @@
   "dataSource": {
     "driverName": "mysql",
     "addr": "127.0.0.1:3306",
-    "database": "db_spot",
+    "database": "db_account",
     "user": "john",
     "password": "since1999",
     "enableAutoMigrate": false

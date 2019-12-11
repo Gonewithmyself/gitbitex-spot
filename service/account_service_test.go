@@ -28,7 +28,7 @@ func TestAddOffsetFills(t *testing.T) {
 		&models.OffsetBill{Offset: models.Offset{"test", 0, 1, 1}},
 		&models.OffsetBill{Offset: models.Offset{"test", 2, 1, 1}},
 	}
-	err := AddOffsetBills(bills)
+	err := AddOffsetBills("", bills)
 	log.Println(err)
 
 	// a, err := mysql.SharedStore().
@@ -49,7 +49,7 @@ func TestXXXX(t *testing.T) {
 	// log.Println(err)
 
 	// a, err := mysql.SharedStore().
-	st := mysql.SharedStore()
+	st := mysql.SharedStore(db_account)
 	// t.Log(st.GetOffsetForUpdate("123", 0))
 	t.Log(st.GetAccount(41, "ETH"))
 

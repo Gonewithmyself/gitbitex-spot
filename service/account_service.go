@@ -197,19 +197,11 @@ func AddOffsetBills(group string, bills []*models.OffsetBill) error {
 	l := len(bills)
 	last := bills[l-1].Offset
 	last.Group = group
-	off, err := tx.GetOffsetForUpdate(group, last.Partition)
-	if err != nil {
-		return err
-	}
-
-	if off == nil {
-		if err = tx.AddOffset(&last); err != nil {
-			return err
-		}
-	} else {
-		if err = tx.UpdateOffset(&last); err != nil {
-			return err
-		}
-	}
+	tx.UpsertOffset(&models.Offset{
+		Group:     group,
+		Partition: last.Partition,
+		LogOffset: last.LogOffset,
+		LogSeq:    last.LogSeq,
+	})
 	return tx.CommitTx()
 }

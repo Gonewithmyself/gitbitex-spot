@@ -15,22 +15,23 @@
 package service
 
 import (
+	"fmt"
 	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/gitbitex/gitbitex-spot/models/mysql"
 	"math"
+	"strconv"
+	"sync"
 )
 
 func GetLastTickByProductId(productId string, granularity int64) (*models.Tick, error) {
-	return mysql.SharedStore(productId).GetLastTickByProductId(productId, granularity)
+	return mysql.SharedStore(productId).GetLastTickByProductId(productId, tbmap[granularity])
 }
 
 func GetTicksByProductId(productId string, granularity int64, limit int) ([]*models.Tick, error) {
-	return mysql.SharedStore(productId).GetTicksByProductId(productId, granularity, limit)
+	return mysql.SharedStore(productId).GetTicksByProductId(productId, tbmap[granularity], limit)
 }
 
 func AddTicks(productId string, ticks map[int64][]*models.Tick) (err error) {
-	// return mysql.SharedStore().AddTicks(ticks)
-	// var min := math.
 	var (
 		min int = math.MaxInt32
 	)
@@ -41,7 +42,8 @@ func AddTicks(productId string, ticks map[int64][]*models.Tick) (err error) {
 		}
 	}
 
-	last := ticks[1][min]
+	fmt.Println(min)
+	last := ticks[1][min-1]
 	tx, err := mysql.SharedStore(productId).BeginTx()
 	if err != nil {
 		return err
@@ -63,14 +65,24 @@ func AddTicks(productId string, ticks map[int64][]*models.Tick) (err error) {
 
 	}()
 
+	list := make([]*models.Tick, 0, min)
 	for k := range ticks {
-		if err = tx.AddTicks(ticks[k][:min]); err != nil {
+		m := map[int64]struct{}{}
+		ll := ticks[k][:min]
+		for i := min - 1; i >= 0; i-- {
+			if _, ok := m[ll[i].Time]; !ok {
+				m[ll[i].Time] = struct{}{}
+				list = append(list, ll[i])
+			}
+		}
+		if err = tx.AddTicks(tbmap[k], list); err != nil {
 			return
 		}
+		list = list[:0]
 	}
 
 	if err = tx.UpsertOffset(&models.Offset{
-		Group:     "kline_" + last.ProductId,
+		Group:     "kline_" + productId,
 		LogOffset: last.LogOffset,
 		LogSeq:    last.LogSeq,
 	}); err != nil {
@@ -78,4 +90,40 @@ func AddTicks(productId string, ticks map[int64][]*models.Tick) (err error) {
 	}
 
 	return
+}
+
+var tbmap = map[int64]string{}
+var one sync.Once
+
+func InitTbmap(minutes []int64) {
+	one.Do(func() {
+		for _, m := range minutes {
+			tbmap[m] = "g_tick_" + tickName(m)
+		}
+	})
+}
+
+func tickName(m int64) string {
+	str := ""
+	if m < 60 {
+
+		if m != 1 {
+			str = strconv.Itoa(int(m))
+		}
+		return "m" + str
+	}
+
+	h := m / 60
+	if h < 24 {
+		if h != 1 {
+			str = strconv.Itoa(int(h))
+		}
+		return "h" + str
+	}
+
+	d := h / 24
+	if d != 1 {
+		str = strconv.Itoa(int(d))
+	}
+	return "d" + str
 }

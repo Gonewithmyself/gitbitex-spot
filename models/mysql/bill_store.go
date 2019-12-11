@@ -99,7 +99,7 @@ func (s *Store) UpdateOffset(account *models.Offset) error {
 }
 
 func (s *Store) UpsertOffset(offset *models.Offset) error {
-	values := fmt.Sprintf("`%v`, %v, %v, %v", offset.Group, offset.Partition, offset.LogOffset, offset.LogSeq)
+	values := fmt.Sprintf("'%v', %v, %v, %v", offset.Group, offset.Partition, offset.LogOffset, offset.LogSeq)
 	sql := fmt.Sprintf("INSERT INTO g_offset (`group`, `partition`, log_offset, log_seq) VALUES(%s)"+
 		"ON DUPLICATE KEY UPDATE log_offset=VALUES(log_offset), log_seq=VALUES(log_seq)", values)
 	return s.db.Exec(sql).Error

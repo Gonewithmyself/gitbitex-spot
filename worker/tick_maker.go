@@ -95,16 +95,14 @@ func (t *TickMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
 		tick, found := t.ticks[granularity]
 		if !found || tick.Time != tickTime {
 			tick = &models.Tick{
-				Open:        log.Price,
-				Close:       log.Price,
-				Low:         log.Price,
-				High:        log.Price,
-				Volume:      log.Size,
-				ProductId:   log.ProductId,
-				Granularity: granularity,
-				Time:        tickTime,
-				LogOffset:   offset,
-				LogSeq:      log.Sequence,
+				Open:      log.Price,
+				Close:     log.Price,
+				Low:       log.Price,
+				High:      log.Price,
+				Volume:    log.Size,
+				Time:      tickTime,
+				LogOffset: offset,
+				LogSeq:    log.Sequence,
 			}
 			t.ticks[granularity] = tick
 		} else {
@@ -127,9 +125,7 @@ func (t *TickMaker) flusher() {
 	for {
 		select {
 		case tick := <-t.tickCh:
-			ticks := tickM[tick.Granularity]
-			ticks = append(ticks, &tick)
-			tickM[tick.Granularity] = ticks
+			tickM[tick.Granularity] = append(tickM[tick.Granularity], &tick)
 			if len(t.tickCh) > 0 && count < 1000 {
 				continue
 			}
@@ -142,11 +138,15 @@ func (t *TickMaker) flusher() {
 					time.Sleep(time.Second + time.Duration(rand.Intn(2000)))
 					continue
 				}
-				// ticks = nil
 
 				// TODO redis publish
+				count = 0
 				break
 			}
 		}
 	}
+}
+
+func init() {
+	service.InitTbmap(minutes)
 }

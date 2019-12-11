@@ -188,6 +188,8 @@ type Order struct {
 }
 
 type Fill struct {
+	Settled    bool
+	Done       bool
 	Id         int64 `gorm:"column:id;primary_key;AUTO_INCREMENT"`
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
@@ -200,9 +202,7 @@ type Fill struct {
 	Funds      decimal.Decimal `sql:"type:decimal(32,16);"`
 	Fee        decimal.Decimal `sql:"type:decimal(32,16);"`
 	Liquidity  string
-	Settled    bool
 	Side       Side
-	Done       bool
 	DoneReason DoneReason
 	LogOffset  int64
 	LogSeq     int64
@@ -226,16 +226,15 @@ type Tick struct {
 	Id          int64 `gorm:"column:id;primary_key;AUTO_INCREMENT"`
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-	ProductId   string          `gorm:"unique_index:p_g_t"`
-	Granularity int64           `gorm:"unique_index:p_g_t"`
-	Time        int64           `gorm:"unique_index:p_g_t"`
+	Granularity int64 `gorm:"-"`
+	Time        int64
 	Open        decimal.Decimal `sql:"type:decimal(32,16);"`
 	High        decimal.Decimal `sql:"type:decimal(32,16);"`
 	Low         decimal.Decimal `sql:"type:decimal(32,16);"`
 	Close       decimal.Decimal `sql:"type:decimal(32,16);"`
 	Volume      decimal.Decimal `sql:"type:decimal(32,16);"`
-	LogOffset   int64
-	LogSeq      int64
+	LogOffset   int64           `gorm:"-"`
+	LogSeq      int64           `gorm:"-"`
 }
 
 type Config struct {

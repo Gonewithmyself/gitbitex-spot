@@ -14,63 +14,82 @@
 
 package worker
 
-// import (
-// 	"testing"
-// 	"time"
+import (
+	"testing"
+	"time"
 
-// 	"github.com/jinzhu/gorm"
-// 	_ "github.com/jinzhu/gorm/dialects/mysql"
-// )
+	"github.com/gitbitex/gitbitex-spot/matching"
+	"github.com/gitbitex/gitbitex-spot/models"
+	"github.com/gitbitex/gitbitex-spot/service"
+	"github.com/shopspring/decimal"
+)
 
-// func Test_tickerUniqueKey(t *testing.T) {
-// 	type args struct {
-// 		product string
-// 		idx     int
-// 		ts      int64
-// 	}
-// 	tests := []struct {
-// 		name string
-// 		args args
-// 		want uint64
-// 	}{
-// 		// TODO: Add test cases.
-// 		{"1", args{"BTC-USDT", 1, time.Now().Unix()}, 1},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			if got := TickerUniqueKey(tt.args.product, tt.args.idx, tt.args.ts); got != tt.want {
-// 				t.Errorf("tickerUniqueKey() = %v, want %v", got, tt.want)
-// 			}
-// 		})
-// 	}
-// }
+func TestSaveTicks(t *testing.T) {
+	tk := &TickMaker{
+		ticks: make(map[int64]*models.Tick),
+	}
 
-// func TestMinte(t *testing.T) {
-// 	now := time.Date(2019, 12, 8, 19, 20, 0, 0, time.Local)
-// 	// now = time.Date(2019, 12, 02, 12,45, 0, 0, time.Local)
-// 	for _, granularity := range minutes {
-// 		tickTime := now.UTC().Truncate(time.Duration(granularity) * time.Minute)
-// 		t.Log(tickTime.Local(), granularity)
-// 	}
+	ticks := genticks(tk, 10)
+	// utils.Pjson(ticks)
 
-// 	// lastBill, err := mysql.SharedStore().GetLastBillByProductId("BTC-USDT")
-// 	// if err != nil {
-// 	// 	panic(err)
-// 	// }
+	tm := make(map[int64][]*models.Tick)
+	for i := range ticks {
+		tm[ticks[i].Granularity] = append(tm[ticks[i].Granularity], &ticks[i])
+	}
 
-// 	t.Error(now)
-// }
+	err := service.AddTicks("BTC-USDT", tm)
+	t.Log(len(ticks), len(minutes))
+	t.Error(err)
+}
 
-// type xxx struct {
-// }
+func genticks(tk *TickMaker, n int) (ticks []models.Tick) {
+	now := time.Now()
+	for i := 0; i < n; i++ {
+		log := &matching.MatchLog{
+			Price: decimal.NewFromFloat(99),
+			Size:  decimal.NewFromFloat(1),
+			Base: matching.Base{
+				Time:     now,
+				Sequence: int64(i + 1),
+			},
+		}
+		ticks = append(ticks, tk.OnMatch(log, int64(i))...)
+		now = now.Add(time.Second * 120)
+	}
+	return
+}
 
-// func TestOrm(t *testing.T) {
+func (t *TickMaker) OnMatch(log *matching.MatchLog, offset int64) (ticks []models.Tick) {
 
-// 	t.Error()
-// }
+	for _, granularity := range minutes {
+		tickTime := log.Time.UTC().Truncate(time.Duration(granularity) * time.Minute).Unix()
+		tick, found := t.ticks[granularity]
+		if !found || tick.Time != tickTime {
+			tick = &models.Tick{
+				Open:        log.Price,
+				Close:       log.Price,
+				Low:         log.Price,
+				High:        log.Price,
+				Volume:      log.Size,
+				Time:        tickTime,
+				Granularity: granularity,
+				LogOffset:   offset,
+				LogSeq:      log.Sequence,
+			}
+			t.ticks[granularity] = tick
+		} else {
+			tick.Close = log.Price
+			tick.Low = decimal.Min(tick.Low, log.Price)
+			tick.High = decimal.Max(tick.High, log.Price)
+			tick.Volume = tick.Volume.Add(log.Size)
+			tick.LogOffset = offset
+			tick.LogSeq = log.Sequence
+		}
 
-// var gdb *gorm.DB
-
+		ticks = append(ticks, *tick)
+	}
+	return
+}
 func init() {
 	// cfg, err := conf.GetConfig()
 	// if err != nil {
