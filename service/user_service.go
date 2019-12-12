@@ -28,11 +28,7 @@ import (
 var gbeConfig *conf.GbeConfig
 
 func init() {
-	cfg, err := conf.GetConfig()
-	if err != nil {
-		panic(err)
-	}
-	gbeConfig = cfg
+	gbeConfig = conf.GetConfig()
 }
 
 func CreateUser(email, password string) (*models.User, error) {

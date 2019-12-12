@@ -64,11 +64,7 @@ func NewStore(db *gorm.DB) *Store {
 }
 
 func initDb(dbname string) (db *gorm.DB, err error) {
-	cfg, err := conf.GetConfig()
-	if err != nil {
-		return
-	}
-
+	cfg := conf.GetConfig()
 	if dbname == "" {
 		dbname = cfg.DataSource.Database
 	}

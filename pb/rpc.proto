@@ -1,8 +1,0 @@
-syntax="proto3";
-
-package pb;
-import "message.proto";
-
-service BillService {
-    rpc open(bill) returns (response) {}
-}

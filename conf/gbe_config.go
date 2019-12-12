@@ -61,9 +61,8 @@ var (
 	// one  sync.Once
 )
 
-func GetConfig() (*GbeConfig, error) {
-
-	return conf, nil
+func GetConfig() *GbeConfig {
+	return conf
 }
 
 func getConfig() (*GbeConfig, error) {
