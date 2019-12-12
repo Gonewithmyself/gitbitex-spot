@@ -97,7 +97,7 @@ func sell(user int64, first, last string, funds, size decimal.Decimal, notes str
 		Bill: models.Bill{
 			UserId:    user,
 			Currency:  first,
-			Hold:      funds.Neg(),
+			Hold:      size.Neg(),
 			Available: decimal.Zero,
 			Type:      models.BillTypeTrade,
 			Notes:     notes,
@@ -109,7 +109,7 @@ func sell(user int64, first, last string, funds, size decimal.Decimal, notes str
 			UserId:    user,
 			Currency:  last,
 			Hold:      decimal.Zero,
-			Available: size,
+			Available: funds,
 			Type:      models.BillTypeTrade,
 			Notes:     notes,
 		},
@@ -127,7 +127,7 @@ func (t *BillMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
 		bills = buy(log.Taker, first, last, funds, log.Size, tradeinfo)
 		bills = append(bills, sell(log.Maker, first, last, funds, log.Size, tradeinfo)...)
 	} else {
-		buy(log.Maker, first, last, funds, log.Size, tradeinfo)
+		bills = buy(log.Maker, first, last, funds, log.Size, tradeinfo)
 		bills = append(bills, sell(log.Taker, first, last, funds, log.Size, tradeinfo)...)
 	}
 

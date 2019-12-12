@@ -39,7 +39,7 @@ func (s *Store) GetLastTickByProductId(productId, granularity string) (*models.T
 	return &tick, err
 }
 
-func (s *Store) AddTicks(tbname string, ticks []*models.Tick) error {
+func (s *Store) AddTicks(tbname string, ticks []*models.Tick) (err error) {
 	if len(ticks) == 0 {
 		return nil
 	}

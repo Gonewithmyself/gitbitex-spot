@@ -117,8 +117,6 @@ CREATE TABLE `g_tick_h2` (
   `low` decimal(32,16) NOT NULL,
   `close` decimal(32,16) NOT NULL,
   `volume` decimal(32,16) NOT NULL,
-  `log_offset` bigint(20) NOT NULL DEFAULT '0',
-  `log_seq` bigint(20) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_time` (`time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

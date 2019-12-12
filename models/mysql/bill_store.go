@@ -107,7 +107,7 @@ func (s *Store) UpsertOffset(offset *models.Offset) error {
 
 func (s *Store) GetLastOffset(group string, partition int64) (*models.Offset, error) {
 	var offset models.Offset
-	err := s.db.Where("`group`=? AND `partition=?`", group, partition).Find(&offset).Error
+	err := s.db.Where("`group`=? AND `partition`=?", group, partition).Find(&offset).Error
 	if err == gorm.ErrRecordNotFound {
 		return &offset, nil
 	}

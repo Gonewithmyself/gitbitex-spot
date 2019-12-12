@@ -210,7 +210,7 @@ func sharedSnapshotStore() *redisSnapshotStore {
 		redisClient := redis.NewClient(&redis.Options{
 			Addr:     gbeConfig.Redis.Addr,
 			Password: gbeConfig.Redis.Password,
-			DB:       0,
+			DB:       1,
 		})
 
 		store = &redisSnapshotStore{redisClient: redisClient}

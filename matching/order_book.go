@@ -133,6 +133,10 @@ func (o *orderBook) CancelOrder(order *models.Order) (logs []Log) {
 		panic(err)
 	}
 
+	if order.Side == models.SideBuy {
+		remainingSize = bookOrder.Funds
+	}
+
 	doneLog := &DoneLog{
 		Base:          Base{bookOrder.UserID, 0, LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
 		OrderId:       bookOrder.OrderId,
@@ -321,6 +325,7 @@ func newBookOrder(order *models.Order) *BookOrder {
 		Price:   order.Price,
 		Side:    order.Side,
 		Type:    order.Type,
+		UserID:  order.UserId,
 	}
 }
 

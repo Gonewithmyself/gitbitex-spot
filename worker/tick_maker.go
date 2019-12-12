@@ -36,7 +36,7 @@ var minutes = []int64{1, 3, 5, 15, 30, 60, 120, 240, 360, 720, 1440}
 
 type TickMaker struct {
 	ticks     map[int64]*models.Tick
-	tickCh    chan models.Tick
+	tickCh    chan []models.Tick
 	logReader matching.LogReader
 	logOffset int64
 	logSeq    int64
@@ -45,7 +45,7 @@ type TickMaker struct {
 func NewTickMaker(productId string, logReader matching.LogReader) *TickMaker {
 	t := &TickMaker{
 		ticks:     map[int64]*models.Tick{},
-		tickCh:    make(chan models.Tick, 1000),
+		tickCh:    make(chan []models.Tick, 100),
 		logReader: logReader,
 	}
 
@@ -55,8 +55,10 @@ func NewTickMaker(productId string, logReader matching.LogReader) *TickMaker {
 		if err != nil {
 			panic(err)
 		}
+
 		if tick != nil {
 			log.Infof("load last tick: %v", tick)
+			tick.Granularity = granularity
 			t.ticks[granularity] = tick
 		}
 	}
@@ -89,20 +91,22 @@ func (t *TickMaker) OnDoneLog(log *matching.DoneLog, offset int64) {
 }
 
 func (t *TickMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
+	var list = make([]models.Tick, 0, len(minutes))
 	for _, granularity := range minutes {
 		tickTime := log.Time.UTC().Truncate(time.Duration(granularity) * time.Minute).Unix()
 
 		tick, found := t.ticks[granularity]
 		if !found || tick.Time != tickTime {
 			tick = &models.Tick{
-				Open:      log.Price,
-				Close:     log.Price,
-				Low:       log.Price,
-				High:      log.Price,
-				Volume:    log.Size,
-				Time:      tickTime,
-				LogOffset: offset,
-				LogSeq:    log.Sequence,
+				Open:        log.Price,
+				Close:       log.Price,
+				Low:         log.Price,
+				High:        log.Price,
+				Volume:      log.Size,
+				Time:        tickTime,
+				Granularity: granularity,
+				LogOffset:   offset,
+				LogSeq:      log.Sequence,
 			}
 			t.ticks[granularity] = tick
 		} else {
@@ -114,35 +118,50 @@ func (t *TickMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
 			tick.LogSeq = log.Sequence
 		}
 
-		t.tickCh <- *tick
+		list = append(list, *tick)
 	}
+	t.tickCh <- list
 }
 
 func (t *TickMaker) flusher() {
 	var tickM = make(map[int64][]*models.Tick, len(minutes))
 	var count int
 	pid := t.logReader.GetProductId()
-	for {
-		select {
-		case tick := <-t.tickCh:
-			tickM[tick.Granularity] = append(tickM[tick.Granularity], &tick)
-			if len(t.tickCh) > 0 && count < 1000 {
+	ticker := time.NewTicker(time.Second)
+
+	flushfn := func() {
+		for {
+			err := service.AddTicks(pid, tickM)
+			if err != nil {
+				log.Error(err)
+				// retry
+				time.Sleep(time.Second + time.Duration(rand.Intn(2000)))
 				continue
 			}
 
-			for {
-				err := service.AddTicks(pid, tickM)
-				if err != nil {
-					log.Error(err)
-					// retry
-					time.Sleep(time.Second + time.Duration(rand.Intn(2000)))
-					continue
-				}
-
-				// TODO redis publish
-				count = 0
-				break
+			// TODO redis publish
+			count = 0
+			break
+		}
+	}
+	for {
+		select {
+		case <-ticker.C:
+			if count > 0 {
+				flushfn()
 			}
+
+		case ticks := <-t.tickCh:
+			count++
+			for i := range ticks {
+				tickM[ticks[i].Granularity] = append(tickM[ticks[i].Granularity], &ticks[i])
+			}
+
+			if count < 100 {
+				continue
+			}
+
+			flushfn()
 		}
 	}
 }

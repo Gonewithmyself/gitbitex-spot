@@ -17,6 +17,7 @@ package pushing
 import (
 	"fmt"
 	"github.com/gitbitex/gitbitex-spot/matching"
+	"github.com/gitbitex/gitbitex-spot/models"
 	logger "github.com/siddontang/go-log/log"
 	"sync"
 	"time"
@@ -91,24 +92,25 @@ func (s *OrderBookStream) runApplier() {
 		case logOffset := <-s.logCh:
 			var l2Change *Level2Change
 
-			switch logOffset.log.(type) {
+			switch log := logOffset.log.(type) {
 			case *matching.DoneLog:
-				log := logOffset.log.(*matching.DoneLog)
 				order, found := s.orderBook.orders[log.OrderId]
 				if !found {
 					continue
+				}
+
+				if log.Side == models.SideBuy {
+					log.RemainingSize = log.RemainingSize.Div(log.Price)
 				}
 				newSize := order.Size.Sub(log.RemainingSize)
 				l2Change = s.orderBook.saveOrder(logOffset.offset, log.Sequence, log.OrderId, newSize, log.Price,
 					log.Side)
 
 			case *matching.OpenLog:
-				log := logOffset.log.(*matching.OpenLog)
 				l2Change = s.orderBook.saveOrder(logOffset.offset, log.Sequence, log.OrderId, log.RemainingSize,
 					log.Price, log.Side)
 
 			case *matching.MatchLog:
-				log := logOffset.log.(*matching.MatchLog)
 				order, found := s.orderBook.orders[log.MakerOrderId]
 				if !found {
 					panic(fmt.Sprintf("should not happen : %+v", log))

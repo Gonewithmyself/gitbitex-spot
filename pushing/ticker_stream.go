@@ -157,7 +157,7 @@ func initTick(pid string) {
 	}
 
 	log, err := service.GetLastTradeByProductId(pid)
-	if err != nil {
+	if err != nil || log == nil {
 		return
 	}
 

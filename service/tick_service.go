@@ -15,12 +15,12 @@
 package service
 
 import (
-	"fmt"
-	"github.com/gitbitex/gitbitex-spot/models"
-	"github.com/gitbitex/gitbitex-spot/models/mysql"
 	"math"
 	"strconv"
 	"sync"
+
+	"github.com/gitbitex/gitbitex-spot/models"
+	"github.com/gitbitex/gitbitex-spot/models/mysql"
 )
 
 func GetLastTickByProductId(productId string, granularity int64) (*models.Tick, error) {
@@ -42,7 +42,6 @@ func AddTicks(productId string, ticks map[int64][]*models.Tick) (err error) {
 		}
 	}
 
-	fmt.Println(min)
 	last := ticks[1][min-1]
 	tx, err := mysql.SharedStore(productId).BeginTx()
 	if err != nil {
@@ -75,7 +74,12 @@ func AddTicks(productId string, ticks map[int64][]*models.Tick) (err error) {
 				list = append(list, ll[i])
 			}
 		}
-		if err = tx.AddTicks(tbmap[k], list); err != nil {
+
+		tb, ok := tbmap[k]
+		if !ok {
+			panic(k)
+		}
+		if err = tx.AddTicks(tb, list); err != nil {
 			return
 		}
 		list = list[:0]

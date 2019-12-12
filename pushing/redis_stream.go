@@ -48,7 +48,7 @@ func (s *redisStream) Start() {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     s.gbeConfig.Redis.Addr,
 		Password: s.gbeConfig.Redis.Password,
-		DB:       0,
+		DB:       1,
 	})
 	_, err = redisClient.Ping().Result()
 	if err != nil {

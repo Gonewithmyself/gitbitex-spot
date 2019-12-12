@@ -16,7 +16,6 @@ package models
 
 import (
 	"encoding/json"
-	"fmt"
 	"reflect"
 	"time"
 
@@ -42,7 +41,7 @@ func NewBinLogStream() *BinLogStream {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     gbeConfig.Redis.Addr,
 		Password: gbeConfig.Redis.Password,
-		DB:       0,
+		DB:       1,
 	})
 
 	return &BinLogStream{
@@ -72,7 +71,6 @@ func (s *BinLogStream) OnRow(e *canal.RowsEvent) error {
 		}
 
 	case "g_account":
-		fmt.Println("---- onrow")
 		var n = 0
 		if e.Action == "update" {
 			n = 1
