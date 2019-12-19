@@ -68,11 +68,12 @@ func (l *OpenLog) GetSeq() int64 {
 
 type DoneLog struct {
 	Base
-	OrderId       int64
-	Price         decimal.Decimal
-	RemainingSize decimal.Decimal
-	Reason        models.DoneReason
-	Side          models.Side
+	OrderId        int64
+	Price          decimal.Decimal
+	RemainingSize  decimal.Decimal
+	RemainingFunds decimal.Decimal
+	Reason         models.DoneReason
+	Side           models.Side
 }
 
 func (l *DoneLog) GetSeq() int64 {
@@ -117,11 +118,12 @@ func newMatchLog(logSeq int64, productId string, tradeSeq int64, takerOrder, mak
 
 func newDoneLog(logSeq int64, productId string, order *BookOrder, remainingSize decimal.Decimal, reason models.DoneReason) *DoneLog {
 	return &DoneLog{
-		Base:          Base{order.UserID, 0, LogTypeDone, logSeq, productId, time.Now()},
-		OrderId:       order.OrderId,
-		Price:         order.Price,
-		RemainingSize: remainingSize,
-		Reason:        reason,
-		Side:          order.Side,
+		Base:           Base{order.UserID, 0, LogTypeDone, logSeq, productId, time.Now()},
+		OrderId:        order.OrderId,
+		Price:          order.Price,
+		RemainingSize:  remainingSize,
+		RemainingFunds: order.Funds,
+		Reason:         reason,
+		Side:           order.Side,
 	}
 }

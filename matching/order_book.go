@@ -133,17 +133,14 @@ func (o *orderBook) CancelOrder(order *models.Order) (logs []Log) {
 		panic(err)
 	}
 
-	if order.Side == models.SideBuy {
-		remainingSize = bookOrder.Funds
-	}
-
 	doneLog := &DoneLog{
-		Base:          Base{bookOrder.UserID, 0, LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
-		OrderId:       bookOrder.OrderId,
-		Price:         bookOrder.Price,
-		RemainingSize: remainingSize,
-		Reason:        models.DoneReasonCancelled,
-		Side:          bookOrder.Side,
+		Base:           Base{bookOrder.UserID, 0, LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
+		OrderId:        bookOrder.OrderId,
+		Price:          bookOrder.Price,
+		RemainingFunds: remainingSize.Mul(bookOrder.Price),
+		RemainingSize:  remainingSize,
+		Reason:         models.DoneReasonCancelled,
+		Side:           bookOrder.Side,
 	}
 	return append(logs, doneLog)
 }
@@ -203,7 +200,7 @@ func (o *orderBook) afterBuy(order *BookOrder) (logs []Log) {
 	}
 
 	// cancel
-	logs = append(logs, newDoneLog(o.nextLogSeq(), o.product.Id, order, order.Funds, models.DoneReasonCancelled))
+	logs = append(logs, newDoneLog(o.nextLogSeq(), o.product.Id, order, order.Size, models.DoneReasonCancelled))
 	return
 }
 

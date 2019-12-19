@@ -16,12 +16,12 @@ package pushing
 
 import (
 	"fmt"
-	"github.com/gitbitex/gitbitex-spot/matching"
-	"github.com/gitbitex/gitbitex-spot/models"
-	"github.com/shopspring/decimal"
-	logger "github.com/siddontang/go-log/log"
 	"sync"
 	"time"
+
+	"github.com/gitbitex/gitbitex-spot/matching"
+	"github.com/shopspring/decimal"
+	logger "github.com/siddontang/go-log/log"
 )
 
 type OrderBookStream struct {
@@ -100,13 +100,9 @@ func (s *OrderBookStream) runApplier() {
 					continue
 				}
 
-				if log.Side == models.SideBuy {
-					log.RemainingSize = log.RemainingSize.Div(log.Price)
-				}
-
-				newSize := order.Size.Sub(log.RemainingSize).Abs()
+				newSize := order.Size.Sub(log.RemainingSize)
 				if newSize.LessThan(decimal.Zero) {
-					fmt.Println(log)
+					logger.Fatal(log)
 				}
 				l2Change = s.orderBook.saveOrder(logOffset.offset, log.Sequence, log.OrderId, newSize, log.Price,
 					log.Side)

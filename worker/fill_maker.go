@@ -15,13 +15,13 @@
 package worker
 
 import (
-	"fmt"
+	"time"
+
 	"github.com/gitbitex/gitbitex-spot/matching"
 	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/gitbitex/gitbitex-spot/models/mysql"
 	"github.com/gitbitex/gitbitex-spot/service"
 	"github.com/siddontang/go-log/log"
-	"time"
 )
 
 type FillMaker struct {
@@ -86,7 +86,7 @@ func (t *FillMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
 }
 
 func (t *FillMaker) OnOpenLog(oplog *matching.OpenLog, offset int64) {
-	fmt.Println("on open")
+	// fmt.Println("on open")
 	ok, err := service.UpdateOrderStatus(oplog.OrderId, models.OrderStatusNew, models.OrderStatusOpen)
 	if !ok {
 		log.Println("update order: ", err, oplog)
@@ -94,7 +94,7 @@ func (t *FillMaker) OnOpenLog(oplog *matching.OpenLog, offset int64) {
 }
 
 func (t *FillMaker) OnDoneLog(log *matching.DoneLog, offset int64) {
-	fmt.Println("on done")
+	// fmt.Println("on done")
 	t.fillCh <- &models.Fill{
 		MessageSeq: log.Sequence,
 		OrderId:    log.OrderId,

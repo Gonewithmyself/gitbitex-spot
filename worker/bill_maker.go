@@ -154,8 +154,8 @@ func (t *BillMaker) OnDoneLog(log *matching.DoneLog, offset int64) {
 	funds := log.RemainingSize
 	if log.Side == models.SideBuy {
 		curr = last
+		funds = log.RemainingFunds
 	}
-
 	bill := &models.OffsetBill{
 		Bill: models.Bill{
 			Currency:  curr,
