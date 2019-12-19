@@ -15,6 +15,7 @@
 package worker
 
 import (
+	"fmt"
 	"github.com/gitbitex/gitbitex-spot/matching"
 	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/gitbitex/gitbitex-spot/models/mysql"
@@ -84,11 +85,16 @@ func (t *FillMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
 	}
 }
 
-func (t *FillMaker) OnOpenLog(log *matching.OpenLog, offset int64) {
-	_, _ = service.UpdateOrderStatus(log.OrderId, models.OrderStatusNew, models.OrderStatusOpen)
+func (t *FillMaker) OnOpenLog(oplog *matching.OpenLog, offset int64) {
+	fmt.Println("on open")
+	ok, err := service.UpdateOrderStatus(oplog.OrderId, models.OrderStatusNew, models.OrderStatusOpen)
+	if !ok {
+		log.Println("update order: ", err, oplog)
+	}
 }
 
 func (t *FillMaker) OnDoneLog(log *matching.DoneLog, offset int64) {
+	fmt.Println("on done")
 	t.fillCh <- &models.Fill{
 		MessageSeq: log.Sequence,
 		OrderId:    log.OrderId,

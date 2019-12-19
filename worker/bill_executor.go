@@ -52,7 +52,7 @@ func NewBillExecutor() *BillExecutor {
 }
 
 func (s *BillExecutor) Start() {
-	go s.runMqListener()
+	// go s.runMqListener()
 	go s.runInspector()
 }
 

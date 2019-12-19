@@ -126,6 +126,8 @@ insert into `g_product`(`id`,`created_at`,`updated_at`,`base_currency`,`quote_cu
 INSERT INTO `g_user` (`created_at`, `updated_at`, `user_id`, `email`, `password_hash`) VALUES
 	('2019-11-28 14:10:56', '2019-11-28 14:10:56', 0, '124369976@qq.com', '16ede86aa3a32052c9b218c72063d968');
 INSERT INTO `g_account` (`created_at`, `updated_at`, `user_id`, `currency`, `hold`, `available`) VALUES
-	(NULL, NULL, 1, 'USDT', 0.0000000000000000, 1000000.0000000000000000),
+	(NULL, NULL, 1, 'USDT', 0.0000000000000000, 1000000000000.0000000000000000),
 	(NULL, NULL, 1, 'BTC', 0.0000000000000000, 100000.0000000000000000),
+  (NULL, NULL, 1, 'EOS', 0.0000000000000000, 1000000.0000000000000000),
+	(NULL, NULL, 1, 'HT', 0.0000000000000000, 100000.0000000000000000),
 	(NULL, NULL, 1, 'ETH', 0.0000000000000000, 1000000.0000000000000000);

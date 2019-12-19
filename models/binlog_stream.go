@@ -87,28 +87,28 @@ func (s *BinLogStream) OnRow(e *canal.RowsEvent) error {
 			return nil
 		}
 
-		var v Fill
-		s.parseRow(e, e.Rows[0], &v)
+		// var v Fill
+		// s.parseRow(e, e.Rows[0], &v)
 
-		buf, _ := json.Marshal(v)
-		ret := s.redisClient.LPush(TopicFill, buf)
-		if ret.Err() != nil {
-			log.Error(ret.Err())
-		}
+		// buf, _ := json.Marshal(v)
+		// ret := s.redisClient.LPush(TopicFill, buf)
+		// if ret.Err() != nil {
+		// 	log.Error(ret.Err())
+		// }
 
 	case "g_bill":
 		if e.Action == "delete" || e.Action == "update" {
 			return nil
 		}
 
-		var v Bill
-		s.parseRow(e, e.Rows[0], &v)
+		// var v Bill
+		// s.parseRow(e, e.Rows[0], &v)
 
-		buf, _ := json.Marshal(v)
-		ret := s.redisClient.LPush(TopicBill, buf)
-		if ret.Err() != nil {
-			log.Error(ret.Err())
-		}
+		// buf, _ := json.Marshal(v)
+		// ret := s.redisClient.LPush(TopicBill, buf)
+		// if ret.Err() != nil {
+		// 	log.Error(ret.Err())
+		// }
 
 	}
 

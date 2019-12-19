@@ -83,7 +83,7 @@ func NewFillExecutor() *FillExecutor {
 
 func (s *FillExecutor) Start() {
 	go s.runInspector()
-	go s.runMqListener()
+	// go s.runMqListener()
 }
 
 // 监听消息队列通知

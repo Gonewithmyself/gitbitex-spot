@@ -1,18 +1,15 @@
 package main
 
 import (
-	"log"
 	"math"
 	"math/rand"
 
 	"github.com/gitbitex/gitbitex-spot/models"
-	"github.com/gitbitex/gitbitex-spot/rest"
-	"github.com/gitbitex/gitbitex-spot/service"
 	"github.com/shopspring/decimal"
 )
 
 var (
-	user int64 = 41
+	user int64 = 1
 )
 
 // RandInt 范围整数
@@ -30,13 +27,27 @@ func RandFloat(min, max float64, n int) float64 {
 
 func placeOrder(pair string) {
 	side, size, price, funds := genParams(pair)
-	od, err := service.PlaceOrder(user, "robot", pair, models.OrderTypeLimit,
-		side, size, price, funds)
-	if err != nil {
-		log.Fatal("place order: ", err)
+	req := placeOrderRequest{
+		Side:      string(side),
+		Type:      string(models.OrderTypeLimit),
+		ProductId: pair,
 	}
 
-	rest.SubmitOrder(od)
+	req.Size, _ = size.Float64()
+	req.Price, _ = price.Float64()
+	req.Funds, _ = funds.Float64()
+
+	err := post(req)
+	if err != nil {
+		panic(err)
+	}
+	// od, err := service.PlaceOrder(user, "robot", pair, models.OrderTypeLimit,
+	// 	side, size, price, funds)
+	// if err != nil {
+	// 	log.Fatal("place order: ", err)
+	// }
+
+	// rest.SubmitOrder(od)
 }
 
 func genParams(pair string) (side models.Side, size, price, funds decimal.Decimal) {
@@ -60,4 +71,10 @@ func round(f float64) float64 {
 		f += delta
 	}
 	return f
+
+	// fn := math.Floor
+	// if rand.Intn(2) == 0 {
+	// 	fn = math.Ceil
+	// }
+	// return fn(f)
 }

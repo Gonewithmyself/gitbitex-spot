@@ -1,22 +1,17 @@
 package main
 
-import "time"
+import (
+	"fmt"
+	"log"
+	"math/rand"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
 
-import "math/rand"
-
-import "github.com/gitbitex/gitbitex-spot/service"
-
-import "log"
-
-import "os/signal"
-
-import "os"
-
-import "syscall"
-
-import "sync"
-
-import "fmt"
+	"github.com/gitbitex/gitbitex-spot/service"
+)
 
 var done = make(chan struct{})
 var wg sync.WaitGroup
@@ -29,16 +24,18 @@ func sinalNotify() {
 }
 
 func main() {
+
+	// placeOrder("ETH-USDT")
 	pds, err := service.GetProducts()
 	if nil != err {
 		log.Fatal("get", err)
 	}
 
 	for i := range pds {
-		// if pds[i].Id == "EOS-USDT" {
-		wg.Add(1)
-		go loopPlaceOrder(pds[i].Id)
-		// }
+		if pds[i].Id == "EOS-USDT" {
+			wg.Add(1)
+			go loopPlaceOrder(pds[i].Id)
+		}
 
 		// break
 	}
@@ -56,7 +53,7 @@ func loopPlaceOrder(pair string) {
 		case <-done:
 			return
 		case <-t.C:
-			for i := 0; i < rand.Intn(5)+1; i++ {
+			for i := 0; i < rand.Intn(1)+1; i++ {
 				placeOrder(pair)
 			}
 			//placeOrder(pair)
