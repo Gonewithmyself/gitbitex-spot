@@ -57,7 +57,7 @@ func NewTickMaker(productId string, logReader matching.LogReader) *TickMaker {
 		}
 
 		if tick != nil {
-			log.Infof("load last tick: %v", tick)
+			// log.Infof("load last tick: %v", tick)
 			tick.Granularity = granularity
 			t.ticks[granularity] = tick
 		}

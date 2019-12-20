@@ -15,8 +15,11 @@
 package matching
 
 import (
+	"bytes"
+	"compress/zlib"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"testing"
 
 	"github.com/gitbitex/gitbitex-spot/models"
@@ -26,6 +29,30 @@ import (
 
 var count int64
 
+func Test_snapshot(t *testing.T) {
+	is := NewRedisSnapshotStore("EOS-USDT")
+	s := is.(*RedisSnapshotStore)
+
+	ret, err := s.redisClient.Get(topicSnapshotPrefix + s.productId).Bytes()
+	var w bytes.Buffer
+	zw := zlib.NewWriter(&w)
+	zw.Write(ret)
+	zw.Close()
+
+	var b bytes.Buffer
+	b.Write(w.Bytes())
+	zr, e := zlib.NewReader(&b)
+	if e != nil {
+		t.Log(e)
+	}
+	zr.Close()
+	after, e := ioutil.ReadAll(zr)
+	if e != nil {
+		t.Log("io", e)
+	}
+
+	t.Error(len(ret), err, w.Len(), bytes.Compare(after, ret))
+}
 func Test_orderBook_ApplyOrder(t *testing.T) {
 
 	pd, _ := service.GetProductById("BTC-USDT")

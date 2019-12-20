@@ -243,6 +243,10 @@ func (s *redisSnapshotStore) storeFull(productId string, snapshot *OrderBookFull
 	if err != nil {
 		return err
 	}
+	buf, err = utils.ZlibMarshal(buf)
+	if err != nil {
+		return err
+	}
 	return s.redisClient.Set(orderBookFullSnapshotKeyPrefix+productId, buf, 7*24*time.Hour).Err()
 }
 
@@ -251,9 +255,13 @@ func (s *redisSnapshotStore) getLastFull(productId string) (*OrderBookFullSnapsh
 	if err != nil {
 		if err == redis.Nil {
 			return nil, nil
-		} else {
-			return nil, err
 		}
+		return nil, err
+	}
+
+	ret, err = utils.ZlibUnmarshal(ret)
+	if err != nil {
+		return nil, err
 	}
 
 	var snapshot OrderBookFullSnapshot

@@ -16,9 +16,11 @@ package matching
 
 import (
 	"encoding/json"
-	"github.com/gitbitex/gitbitex-spot/conf"
-	"github.com/go-redis/redis"
 	"time"
+
+	"github.com/gitbitex/gitbitex-spot/conf"
+	"github.com/gitbitex/gitbitex-spot/utils"
+	"github.com/go-redis/redis"
 )
 
 const (
@@ -51,15 +53,26 @@ func (s *RedisSnapshotStore) Store(snapshot *Snapshot) error {
 		return err
 	}
 
+	buf, err = utils.ZlibMarshal(buf)
+	if err != nil {
+		return err
+	}
+
 	return s.redisClient.Set(topicSnapshotPrefix+s.productId, buf, 7*24*time.Hour).Err()
 }
 
 func (s *RedisSnapshotStore) GetLatest() (*Snapshot, error) {
 	ret, err := s.redisClient.Get(topicSnapshotPrefix + s.productId).Bytes()
+
 	if err != nil {
 		if err == redis.Nil {
 			return nil, nil
 		}
+		return nil, err
+	}
+
+	ret, err = utils.ZlibUnmarshal(ret)
+	if err != nil {
 		return nil, err
 	}
 
