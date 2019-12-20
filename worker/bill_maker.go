@@ -144,7 +144,7 @@ func (t *BillMaker) OnOpenLog(log *matching.OpenLog, offset int64) {
 
 // todo save offset
 func (t *BillMaker) OnDoneLog(log *matching.DoneLog, offset int64) {
-	if log.Reason != models.DoneReasonCancelled {
+	if log.Reason == models.DoneReasonFilled && log.RemainingFunds == decimal.Zero {
 		return
 	}
 

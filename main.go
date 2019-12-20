@@ -15,6 +15,7 @@
 package main
 
 import (
+	googleAgent "github.com/google/gops/agent"
 	"github.com/gitbitex/gitbitex-spot/conf"
 	"github.com/gitbitex/gitbitex-spot/matching"
 	"github.com/gitbitex/gitbitex-spot/models"
@@ -34,6 +35,8 @@ func main() {
 		log.Info(http.ListenAndServe("localhost:6061", nil))
 	}()
 
+	go googleAgent.Listen(googleAgent.Options{})
+	
 	go models.NewBinLogStream().Start()
 
 	matching.StartEngine()

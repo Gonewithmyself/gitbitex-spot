@@ -137,7 +137,7 @@ func (o *orderBook) CancelOrder(order *models.Order) (logs []Log) {
 		Base:           Base{bookOrder.UserID, 0, LogTypeDone, o.nextLogSeq(), o.product.Id, time.Now()},
 		OrderId:        bookOrder.OrderId,
 		Price:          bookOrder.Price,
-		RemainingFunds: remainingSize.Mul(bookOrder.Price),
+		RemainingFunds: bookOrder.Funds,
 		RemainingSize:  remainingSize,
 		Reason:         models.DoneReasonCancelled,
 		Side:           bookOrder.Side,
@@ -245,7 +245,8 @@ func (d *depth) iter(fn func(order *BookOrder) bool) {
 func (d *depth) buy(b *BookOrder, o *orderBook) (logs []Log) {
 	d.iter(func(s *BookOrder) bool {
 		if s.Price.Cmp(b.Price) > 0 ||
-			b.Funds.IsZero() {
+			b.Funds.IsZero() ||
+			(b.Size.IsZero() && b.Type == models.OrderTypeLimit) {
 			return false
 		}
 
@@ -266,13 +267,13 @@ func (d *depth) buy(b *BookOrder, o *orderBook) (logs []Log) {
 			log.Fatal("decr order: ", err)
 		}
 
+		matchLog := newMatchLog(o.nextLogSeq(), o.product.Id, o.nextTradeSeq(), b, s, price, size)
+		logs = append(logs, matchLog)
+
 		if s.Size.IsZero() {
 			doneLog := newDoneLog(o.nextLogSeq(), o.product.Id, s, s.Size, models.DoneReasonFilled)
 			logs = append(logs, doneLog)
 		}
-
-		matchLog := newMatchLog(o.nextLogSeq(), o.product.Id, o.nextTradeSeq(), b, s, price, size)
-		logs = append(logs, matchLog)
 		return true
 	})
 	return
@@ -292,13 +293,14 @@ func (d *depth) sell(s *BookOrder, o *orderBook) (logs []Log) {
 			log.Fatal("match: ", err)
 		}
 
+		b.Funds = b.Funds.Sub(size.Mul(price))
+		matchLog := newMatchLog(o.nextLogSeq(), o.product.Id, o.nextTradeSeq(), s, b, price, size)
+		logs = append(logs, matchLog)
+
 		if b.Size.IsZero() {
 			doneLog := newDoneLog(o.nextLogSeq(), o.product.Id, b, b.Size, models.DoneReasonFilled)
 			logs = append(logs, doneLog)
 		}
-
-		matchLog := newMatchLog(o.nextLogSeq(), o.product.Id, o.nextTradeSeq(), s, b, price, size)
-		logs = append(logs, matchLog)
 		return true
 	})
 	return
