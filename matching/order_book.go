@@ -184,7 +184,7 @@ func (o *orderBook) afterBuy(order *BookOrder) (logs []Log) {
 	if order.Type == models.OrderTypeMarket {
 		order.Price = decimal.Zero
 	}
-	if order.Funds.IsZero() {
+	if order.Funds.IsZero() || (order.Size.IsZero() && order.Type == models.OrderTypeLimit) {
 		// done
 		logs = append(logs,
 			newDoneLog(o.nextLogSeq(), o.product.Id, order,
@@ -257,8 +257,8 @@ func (d *depth) buy(b *BookOrder, o *orderBook) (logs []Log) {
 		}
 
 		size := decimal.Min(bsize, s.Size)
-
 		if b.Type == models.OrderTypeLimit {
+			size = decimal.Min(size, b.Size)
 			b.Size = b.Size.Sub(size)
 		}
 		funds := size.Mul(price)
