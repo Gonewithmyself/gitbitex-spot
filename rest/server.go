@@ -15,8 +15,11 @@
 package rest
 
 import (
-	"github.com/gin-gonic/gin"
 	"io/ioutil"
+
+	"github.com/gin-gonic/gin"
+	"github.com/gitbitex/gitbitex-spot/rest/monitor"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type HttpServer struct {
@@ -44,11 +47,12 @@ func (server *HttpServer) Start() {
 	r.GET("/api/products/:productId/trades", GetProductTrades)
 	r.GET("/api/products/:productId/book", GetProductOrderBook)
 	r.GET("/api/products/:productId/candles", GetProductCandles)
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	private := r.Group("/", checkToken())
 	{
 		private.GET("/api/orders", GetOrders)
-		private.POST("/api/orders", PlaceOrder)
+		private.POST("/api/orders", monitor.Wrap(PlaceOrder))
 		private.DELETE("/api/orders/:orderId", CancelOrder)
 		private.DELETE("/api/orders", CancelOrders)
 		private.GET("/api/accounts", GetAccounts)
@@ -59,7 +63,6 @@ func (server *HttpServer) Start() {
 		private.GET("/api/wallets/:currency/transactions", GetWalletTransactions)
 		private.POST("/api/wallets/:currency/withdrawal", Withdrawal)
 	}
-
 	err := r.Run(server.addr)
 	if err != nil {
 		panic(err)

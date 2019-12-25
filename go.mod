@@ -43,6 +43,7 @@ require (
 	github.com/pingcap/kvproto v0.0.0-20190904075355-9a1bd6a31da2 // indirect
 	github.com/pingcap/tidb v2.0.11+incompatible // indirect
 	github.com/pkg/errors v0.8.1
+	github.com/prometheus/client_golang v0.9.3-0.20190127221311-3c4408c8b829
 	github.com/prometheus/common v0.2.0
 	github.com/remyoudompheng/bigfft v0.0.0-20190728182440-6a916e37a237 // indirect
 	github.com/segmentio/kafka-go v0.3.2
