@@ -66,7 +66,7 @@ type PriceLevel struct {
 func newOrderBook(productId string) *orderBook {
 	b := &orderBook{
 		productId: productId,
-		depths:    map[models.Side]*treemap.Map{},
+		depths:    map[models.Side]*treemap.Map{}, // map[price]PriceLevel
 		orders:    map[int64]*matching.BookOrder{},
 	}
 	b.depths[models.SideBuy] = treemap.NewWith(utils.DecimalDescComparator)

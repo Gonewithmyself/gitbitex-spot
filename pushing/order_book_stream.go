@@ -88,6 +88,7 @@ func (s *OrderBookStream) runApplier() {
 	var lastLevel2Snapshot *OrderBookLevel2Snapshot
 	var lastFullSnapshot *OrderBookFullSnapshot
 
+	tick := time.NewTicker(time.Millisecond * 200)
 	for {
 		select {
 		case logOffset := <-s.logCh:
@@ -135,7 +136,7 @@ func (s *OrderBookStream) runApplier() {
 				s.sub.publish(ChannelLevel2.FormatWithProductId(s.productId), l2Change)
 			}
 
-		case <-time.After(200 * time.Millisecond):
+		case <-tick.C:
 			if lastLevel2Snapshot == nil || s.orderBook.seq > lastLevel2Snapshot.Seq {
 				lastLevel2Snapshot = s.orderBook.SnapshotLevel2(1000)
 				lastLevel2Snapshots.Store(s.productId, lastLevel2Snapshot)

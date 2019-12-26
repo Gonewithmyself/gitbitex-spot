@@ -18,7 +18,10 @@ import (
 	"github.com/gitbitex/gitbitex-spot/conf"
 	"github.com/gitbitex/gitbitex-spot/service"
 	"github.com/siddontang/go-log/log"
+	"sync"
 )
+
+var engines []*Engine
 
 func StartEngine() {
 	gbeConfig := conf.GetConfig()
@@ -32,7 +35,21 @@ func StartEngine() {
 		logStore := NewKafkaLogStore(product.Id, gbeConfig.Kafka.Brokers)
 		matchEngine := NewEngine(product, orderReader, logStore, snapshotStore)
 		matchEngine.Start()
+		engines = append(engines, matchEngine)
 	}
 
 	log.Info("match engine ok")
+}
+
+func StopEngine() {
+	var wg sync.WaitGroup
+	wg.Add(len(engines))
+	for i := range engines {
+		go func(i int) {
+			engines[i].Stop()
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
+	log.Info("stop engine ok")
 }

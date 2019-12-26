@@ -15,6 +15,8 @@
 package matching
 
 import (
+	"context"
+	"sync"
 	"time"
 
 	"github.com/gitbitex/gitbitex-spot/models"
@@ -33,6 +35,9 @@ type Engine struct {
 
 	// 读取order的起始offset，该值第一次启动时候会从快照中恢复
 	orderOffset int64
+
+	lastSaveOffset int64
+	nowOffset      int64
 
 	// 读取的order会写入chan，写入order的同时需要携带该order的offset
 	orderCh chan *offsetOrder
@@ -54,6 +59,10 @@ type Engine struct {
 
 	// 持久化snapshot的存储方式，应该支持多种方式，如本地磁盘，redis等
 	snapshotStore SnapshotStore
+
+	wg     sync.WaitGroup
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // 快照是engine在某一时候的一致性内存状态
@@ -71,8 +80,8 @@ func NewEngine(product *models.Product, orderReader OrderReader, logStore LogSto
 	e := &Engine{
 		productId:            product.Id,
 		OrderBook:            NewOrderBook(product),
-		logCh:                make(chan Log, 10000),
-		orderCh:              make(chan *offsetOrder, 10000),
+		logCh:                make(chan Log, 100),
+		orderCh:              make(chan *offsetOrder, 100),
 		snapshotReqCh:        make(chan *Snapshot, 32),
 		snapshotApproveReqCh: make(chan *Snapshot, 32),
 		snapshotCh:           make(chan *Snapshot, 32),
@@ -80,6 +89,7 @@ func NewEngine(product *models.Product, orderReader OrderReader, logStore LogSto
 		orderReader:          orderReader,
 		logStore:             logStore,
 	}
+	e.ctx, e.cancel = context.WithCancel(context.Background())
 
 	// 获取最新的snapshot，并使用snapshot进行恢复
 	snapshot, err := snapshotStore.GetLatest()
@@ -94,6 +104,7 @@ func NewEngine(product *models.Product, orderReader OrderReader, logStore LogSto
 
 func (e *Engine) Start() {
 	// 读取下单
+	e.wg.Add(4)
 	go e.runFetcher()
 
 	// 进行撮合
@@ -104,6 +115,21 @@ func (e *Engine) Start() {
 
 	// orderbook 快照
 	go e.runSnapshots()
+}
+
+func (e *Engine) Stop() {
+	e.cancel()
+	e.wg.Wait()
+
+	if e.lastSaveOffset != e.nowOffset {
+		var snap Snapshot
+		snap.OrderBookSnapshot = e.OrderBook.Snapshot()
+		snap.OrderOffset = e.nowOffset
+		err := e.snapshotStore.Store(&snap)
+		if err != nil {
+			logger.Errorln("save snapshot: ", err)
+		}
+	}
 }
 
 // 负责不断的拉取order，写入chan
@@ -117,9 +143,23 @@ func (e *Engine) runFetcher() {
 		logger.Fatalf("set order reader offset error: %v", err)
 	}
 
+	defer func() {
+		e.wg.Done()
+	}()
+
 	for {
-		offset, order, err := e.orderReader.FetchOrder()
+		select {
+		case <-e.ctx.Done():
+			return
+
+		default:
+		}
+
+		offset, order, err := e.orderReader.FetchOrder(e.ctx)
 		if err != nil {
+			if err == context.Canceled {
+				return
+			}
 			logger.Error(err)
 			continue
 		}
@@ -130,9 +170,16 @@ func (e *Engine) runFetcher() {
 // 从本地队列获取order，执行orderBook操作，同时要响应snapshot请求
 func (e *Engine) runApplier() {
 	var orderOffset int64
+	defer func() {
+		e.nowOffset = orderOffset
+		e.wg.Done()
+	}()
 
 	for {
 		select {
+		case <-e.ctx.Done():
+			return
+
 		case offsetOrder := <-e.orderCh:
 			// put or cancel order
 			var logs []Log
@@ -177,8 +224,14 @@ func (e *Engine) runCommitter() {
 	var pending *Snapshot = nil
 	var logs []interface{}
 
+	defer func() {
+		e.wg.Done()
+	}()
 	for {
 		select {
+		case <-e.ctx.Done():
+			return
+
 		case log := <-e.logCh:
 			// discard duplicate log
 			if log.GetSeq() <= seq {
@@ -229,9 +282,16 @@ func (e *Engine) runCommitter() {
 func (e *Engine) runSnapshots() {
 	// 最后一次快照时的order orderOffset
 	orderOffset := e.orderOffset
+	defer func() {
+		e.lastSaveOffset = orderOffset
+		e.wg.Done()
+	}()
 
 	for {
 		select {
+		case <-e.ctx.Done():
+			return
+
 		case <-time.After(30 * time.Second):
 			// make a new snapshot request
 			e.snapshotReqCh <- &Snapshot{
@@ -255,7 +315,7 @@ func (e *Engine) runSnapshots() {
 }
 
 func (e *Engine) restore(snapshot *Snapshot) {
-	logger.Infof("restoring: %+v", *snapshot)
+	// logger.Infof("restoring: %+v", *snapshot)
 	e.orderOffset = snapshot.OrderOffset
 	e.OrderBook.Restore(&snapshot.OrderBookSnapshot)
 }

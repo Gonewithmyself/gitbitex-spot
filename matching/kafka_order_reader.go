@@ -46,8 +46,8 @@ func (s *KafkaOrderReader) SetOffset(offset int64) error {
 	return s.orderReader.SetOffset(offset)
 }
 
-func (s *KafkaOrderReader) FetchOrder() (offset int64, order *models.Order, err error) {
-	message, err := s.orderReader.FetchMessage(context.Background())
+func (s *KafkaOrderReader) FetchOrder(ctx context.Context) (offset int64, order *models.Order, err error) {
+	message, err := s.orderReader.FetchMessage(ctx)
 	if err != nil {
 		return 0, nil, err
 	}

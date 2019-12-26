@@ -15,6 +15,8 @@
 package matching
 
 import (
+	"context"
+
 	"github.com/gitbitex/gitbitex-spot/models"
 )
 
@@ -24,7 +26,7 @@ type OrderReader interface {
 	SetOffset(offset int64) error
 
 	// 拉取order
-	FetchOrder() (offset int64, order *models.Order, err error)
+	FetchOrder(ctx context.Context) (offset int64, order *models.Order, err error)
 }
 
 // 用于保存撮合日志
