@@ -24,5 +24,6 @@ func signalHandler() {
 
 	<-notifier
 	matching.StopEngine()
+	signal.Stop(notifier)
 	wg.Done()
 }

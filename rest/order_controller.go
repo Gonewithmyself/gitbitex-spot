@@ -66,10 +66,14 @@ func submitOrder(order *models.Order) {
 		return
 	}
 
-	err = getWriter(order.ProductId).WriteMessages(context.Background(), kafka.Message{Value: buf})
-	if err != nil {
-		log.Error(err)
+	for i := 1; i < 10; i++ {
+		err = getWriter(order.ProductId).WriteMessages(context.Background(), kafka.Message{Value: buf})
+		if err != nil {
+			log.Error(err)
+			time.Sleep(time.Second * time.Duration(i*2))
+		}
 	}
+
 }
 
 // POST /orders

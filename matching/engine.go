@@ -99,6 +99,8 @@ func NewEngine(product *models.Product, orderReader OrderReader, logStore LogSto
 	if snapshot != nil {
 		e.restore(snapshot)
 	}
+	e.nowOffset = e.orderOffset
+	e.lastSaveOffset = e.nowOffset
 	return e
 }
 
@@ -122,6 +124,7 @@ func (e *Engine) Stop() {
 	e.wg.Wait()
 
 	if e.lastSaveOffset != e.nowOffset {
+		logger.Info("save off: ", e.productId, e.lastSaveOffset, e.nowOffset)
 		var snap Snapshot
 		snap.OrderBookSnapshot = e.OrderBook.Snapshot()
 		snap.OrderOffset = e.nowOffset
@@ -171,7 +174,9 @@ func (e *Engine) runFetcher() {
 func (e *Engine) runApplier() {
 	var orderOffset int64
 	defer func() {
-		e.nowOffset = orderOffset
+		if orderOffset != 0 {
+			e.nowOffset = orderOffset
+		}
 		e.wg.Done()
 	}()
 
@@ -283,7 +288,9 @@ func (e *Engine) runSnapshots() {
 	// 最后一次快照时的order orderOffset
 	orderOffset := e.orderOffset
 	defer func() {
-		e.lastSaveOffset = orderOffset
+		if orderOffset != 0 {
+			e.lastSaveOffset = orderOffset
+		}
 		e.wg.Done()
 	}()
 
@@ -315,7 +322,7 @@ func (e *Engine) runSnapshots() {
 }
 
 func (e *Engine) restore(snapshot *Snapshot) {
-	// logger.Infof("restoring: %+v", *snapshot)
+	logger.Infof("restoring %s, from: %d", e.productId, snapshot.OrderOffset)
 	e.orderOffset = snapshot.OrderOffset
 	e.OrderBook.Restore(&snapshot.OrderBookSnapshot)
 }
