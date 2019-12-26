@@ -15,12 +15,14 @@
 package worker
 
 import (
+	"context"
+	"time"
+
 	"github.com/gitbitex/gitbitex-spot/matching"
 	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/gitbitex/gitbitex-spot/models/mysql"
 	"github.com/gitbitex/gitbitex-spot/service"
 	"github.com/prometheus/common/log"
-	"time"
 )
 
 type TradeMaker struct {
@@ -28,14 +30,18 @@ type TradeMaker struct {
 	logReader matching.LogReader
 	logOffset int64
 	logSeq    int64
+	name      string
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 func NewTradeMaker(logReader matching.LogReader) *TradeMaker {
 	t := &TradeMaker{
 		tradeCh:   make(chan *models.Trade, 1000),
 		logReader: logReader,
+		name:      "tradeMaker_" + logReader.GetProductId(),
 	}
-
+	t.ctx, t.cancel = context.WithCancel(context.Background())
 	lastTrade, err := mysql.SharedStore(logReader.GetProductId()).GetLastTradeByProductId(logReader.GetProductId())
 	if err != nil {
 		panic(err)
@@ -55,6 +61,12 @@ func (t *TradeMaker) Start() {
 	}
 	go t.logReader.Run(t.logSeq, t.logOffset)
 	go t.runFlusher()
+}
+
+func (t *TradeMaker) Stop() {
+	t.logReader.Stop()
+	t.cancel()
+	log.Info("stopped", t.name)
 }
 
 func (t *TradeMaker) OnOpenLog(log *matching.OpenLog, offset int64) {
@@ -85,6 +97,9 @@ func (t *TradeMaker) runFlusher() {
 	pid := t.logReader.GetProductId()
 	for {
 		select {
+		case <-t.ctx.Done():
+			return
+
 		case trade := <-t.tradeCh:
 			trades = append(trades, trade)
 

@@ -15,6 +15,7 @@
 package worker
 
 import (
+	"context"
 	"math/rand"
 	"time"
 
@@ -28,18 +29,15 @@ import (
 
 var minutes = []int64{1, 3, 5, 15, 30, 60, 120, 240, 360, 720, 1440}
 
-// func TickerUniqueKey(product string, idx int, ts int64) uint64 {
-// 	id := service.ProductID(product)
-
-// 	return id<<56 + uint64(idx)<<48 + uint64(ts)
-// }
-
 type TickMaker struct {
 	ticks     map[int64]*models.Tick
 	tickCh    chan []models.Tick
 	logReader matching.LogReader
+	name      string
 	logOffset int64
 	logSeq    int64
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 func NewTickMaker(productId string, logReader matching.LogReader) *TickMaker {
@@ -47,8 +45,9 @@ func NewTickMaker(productId string, logReader matching.LogReader) *TickMaker {
 		ticks:     map[int64]*models.Tick{},
 		tickCh:    make(chan []models.Tick, 100),
 		logReader: logReader,
+		name:      "ticker maker" + productId,
 	}
-
+	t.ctx, t.cancel = context.WithCancel(context.Background())
 	// 加载数据库中记录的最新tick
 	for _, granularity := range minutes {
 		tick, err := service.GetLastTickByProductId(productId, granularity)
@@ -80,6 +79,12 @@ func (t *TickMaker) Start() {
 	}
 	go t.logReader.Run(t.logSeq, t.logOffset)
 	go t.flusher()
+}
+
+func (t *TickMaker) Stop() {
+	t.logReader.Stop()
+	t.cancel()
+	log.Info("stopped", t.name)
 }
 
 func (t *TickMaker) OnOpenLog(log *matching.OpenLog, offset int64) {
@@ -146,6 +151,9 @@ func (t *TickMaker) flusher() {
 	}
 	for {
 		select {
+		case <-t.ctx.Done():
+			return
+
 		case <-ticker.C:
 			if count > 0 {
 				flushfn()

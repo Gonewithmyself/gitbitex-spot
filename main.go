@@ -15,21 +15,18 @@
 package main
 
 import (
-	"github.com/gitbitex/gitbitex-spot/conf"
-	"github.com/gitbitex/gitbitex-spot/matching"
+	"net/http"
+	_ "net/http/pprof"
+
 	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/gitbitex/gitbitex-spot/pushing"
 	"github.com/gitbitex/gitbitex-spot/rest"
-	"github.com/gitbitex/gitbitex-spot/service"
-	"github.com/gitbitex/gitbitex-spot/worker"
 	googleAgent "github.com/google/gops/agent"
 	"github.com/prometheus/common/log"
-	"net/http"
-	_ "net/http/pprof"
 )
 
 func main() {
-	gbeConfig := conf.GetConfig()
+	// gbeConfig := conf.GetConfig()
 
 	go func() {
 		log.Info(http.ListenAndServe("localhost:6061", nil))
@@ -43,18 +40,18 @@ func main() {
 
 	pushing.StartServer()
 
-	worker.NewFillExecutor().Start()
-	worker.NewBillExecutor().Start()
-	products, err := service.GetProducts()
-	if err != nil {
-		panic(err)
-	}
-	for _, product := range products {
-		worker.NewTickMaker(product.Id, matching.NewKafkaLogReader("tickMaker", product.Id, gbeConfig.Kafka.Brokers)).Start()
-		worker.NewFillMaker(matching.NewKafkaLogReader("fillMaker", product.Id, gbeConfig.Kafka.Brokers)).Start()
-		worker.NewTradeMaker(matching.NewKafkaLogReader("tradeMaker", product.Id, gbeConfig.Kafka.Brokers)).Start()
-		worker.NewBillMaker(matching.NewKafkaLogReader("billMaker", product.Id, gbeConfig.Kafka.Brokers)).Start()
-	}
+	// worker.NewFillExecutor().Start()
+	// worker.NewBillExecutor().Start()
+	// products, err := service.GetProducts()
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// for _, product := range products {
+	// 	worker.NewTickMaker(product.Id, matching.NewKafkaLogReader("tickMaker", product.Id, gbeConfig.Kafka.Brokers)).Start()
+	// 	worker.NewFillMaker(matching.NewKafkaLogReader("fillMaker", product.Id, gbeConfig.Kafka.Brokers)).Start()
+	// 	worker.NewTradeMaker(matching.NewKafkaLogReader("tradeMaker", product.Id, gbeConfig.Kafka.Brokers)).Start()
+	// 	worker.NewBillMaker(matching.NewKafkaLogReader("billMaker", product.Id, gbeConfig.Kafka.Brokers)).Start()
+	// }
 
 	rest.StartServer()
 	select {}

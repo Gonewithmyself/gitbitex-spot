@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,8 @@ type BillMaker struct {
 	logOffset int64
 	logSeq    int64
 	group     string
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 type billItem struct {
@@ -38,6 +41,7 @@ func NewBillMaker(logReader matching.LogReader) *BillMaker {
 		logReader: logReader,
 		group:     "billmaker_" + logReader.GetProductId(),
 	}
+	t.ctx, t.cancel = context.WithCancel(context.Background())
 
 	lastBill, err := mysql.SharedStore(db_account).GetLastOffset(t.group, 0)
 	if err != nil {
@@ -59,6 +63,12 @@ func (t *BillMaker) Start() {
 	}
 	go t.logReader.Run(t.logSeq, t.logOffset)
 	go t.flusher()
+}
+
+func (t *BillMaker) Stop() {
+	t.logReader.Stop()
+	t.cancel()
+	log.Info("stopped", t.group)
 }
 
 func getcurr(pair string) (bc, sc string) {
@@ -175,6 +185,9 @@ func (t *BillMaker) flusher() {
 
 	for {
 		select {
+		case <-t.ctx.Done():
+			return
+
 		case bill := <-t.billCh:
 			bills = append(bills, bill)
 

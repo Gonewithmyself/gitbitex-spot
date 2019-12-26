@@ -15,14 +15,17 @@
 package worker
 
 import (
+	"context"
 	"encoding/json"
+	"sync"
+	"time"
+
 	"github.com/gitbitex/gitbitex-spot/conf"
 	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/gitbitex/gitbitex-spot/service"
 	"github.com/go-redis/redis"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/siddontang/go-log/log"
-	"time"
 )
 
 const fillWorkerNum = 10
@@ -31,13 +34,20 @@ const billTopic = "fill2bill"
 
 type FillExecutor struct {
 	// 用于接收sharding之后的fill，按照orderId进行sharding，可以降低锁竞争，
+	name      string
 	workerChs [fillWorkerNum]chan *models.Fill
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
 }
 
 func NewFillExecutor() *FillExecutor {
 	f := &FillExecutor{
 		workerChs: [fillWorkerNum]chan *models.Fill{},
+		name:      "fill executor",
 	}
+
+	f.ctx, f.cancel = context.WithCancel(context.Background())
 	// 初始化和fillWorkersNum一样数量的routine，每个routine负责一个chan
 	for i := 0; i < fillWorkerNum; i++ {
 		f.workerChs[i] = make(chan *models.Fill, 512)
@@ -47,9 +57,23 @@ func NewFillExecutor() *FillExecutor {
 			if err != nil {
 				panic(err)
 			}
+			f.wg.Add(1)
+			defer func() {
+				// drain ch
+				for len(f.workerChs[idx]) > 0 {
+					select {
+					case <-f.workerChs[idx]:
+					default:
+					}
+				}
+				f.wg.Done()
+			}()
 
 			for {
 				select {
+				case <-f.ctx.Done():
+					return
+
 				case fill := <-f.workerChs[idx]:
 					if settledOrderCache.Contains(fill.OrderId) {
 						continue
@@ -86,6 +110,13 @@ func (s *FillExecutor) Start() {
 	// go s.runMqListener()
 }
 
+func (s *FillExecutor) Stop() {
+	s.cancel()
+	log.Info("stopping...", s.name)
+	s.wg.Wait()
+	log.Info("stopped", s.name)
+}
+
 // 监听消息队列通知
 func (s *FillExecutor) runMqListener() {
 	gbeConfig := conf.GetConfig()
@@ -117,8 +148,13 @@ func (s *FillExecutor) runMqListener() {
 
 // 定时轮询数据库
 func (s *FillExecutor) runInspector() {
+	s.wg.Add(1)
+	defer s.wg.Done()
+
 	for {
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-time.After(1 * time.Second):
 			fills, err := service.GetUnsettledFills(1000)
 			if err != nil {

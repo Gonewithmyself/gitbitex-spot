@@ -15,30 +15,50 @@
 package worker
 
 import (
+	"context"
 	"encoding/json"
+	"sync"
+	"time"
+
 	"github.com/gitbitex/gitbitex-spot/conf"
 	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/gitbitex/gitbitex-spot/service"
 	"github.com/go-redis/redis"
 	"github.com/siddontang/go-log/log"
-	"time"
 )
 
 type BillExecutor struct {
 	workerChs [fillWorkerNum]chan *models.Bill
+	name      string
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
 }
 
 func NewBillExecutor() *BillExecutor {
 	f := &BillExecutor{
 		workerChs: [fillWorkerNum]chan *models.Bill{},
+		name:      "bill excutor",
 	}
-
+	f.ctx, f.cancel = context.WithCancel(context.Background())
 	// 初始化和fillWorkersNum一样数量的routine，每个routine负责一个chan
 	for i := 0; i < fillWorkerNum; i++ {
 		f.workerChs[i] = make(chan *models.Bill, 256)
 		go func(idx int) {
+			f.wg.Add(1)
+			defer func() {
+				for len(f.workerChs[idx]) > 0 {
+					select {
+					case <-f.workerChs[idx]:
+					default:
+					}
+				}
+				f.wg.Done()
+			}()
 			for {
 				select {
+				case <-f.ctx.Done():
+					return
 				case bill := <-f.workerChs[idx]:
 					err := service.ExecuteBill(bill.UserId, bill.Currency)
 					if err != nil {
@@ -54,6 +74,13 @@ func NewBillExecutor() *BillExecutor {
 func (s *BillExecutor) Start() {
 	// go s.runMqListener()
 	go s.runInspector()
+}
+
+func (s *BillExecutor) Stop() {
+	s.cancel()
+	log.Info("stopping ...", s.name)
+	s.wg.Wait()
+	log.Info("stopped  ", s.name)
 }
 
 func (s *BillExecutor) runMqListener() {
@@ -83,8 +110,13 @@ func (s *BillExecutor) runMqListener() {
 }
 
 func (s *BillExecutor) runInspector() {
+	s.wg.Add(1)
+	defer s.wg.Done()
 	for {
 		select {
+		case <-s.ctx.Done():
+			return
+
 		case <-time.After(1 * time.Second):
 			bills, err := service.GetUnsettledBills()
 			if err != nil {

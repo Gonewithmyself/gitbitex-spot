@@ -45,6 +45,7 @@ type LogReader interface {
 
 	// 开始执行读取log，读取到的log将会回调给观察者
 	Run(seq, offset int64)
+	Stop()
 }
 
 // 撮合日志reader观察者

@@ -15,6 +15,7 @@
 package worker
 
 import (
+	"context"
 	"time"
 
 	"github.com/gitbitex/gitbitex-spot/matching"
@@ -25,17 +26,22 @@ import (
 )
 
 type FillMaker struct {
+	name      string
 	fillCh    chan *models.Fill
 	logReader matching.LogReader
 	logOffset int64
 	logSeq    int64
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 func NewFillMaker(logReader matching.LogReader) *FillMaker {
 	t := &FillMaker{
-		fillCh:    make(chan *models.Fill, 1000),
+		fillCh:    make(chan *models.Fill, 100),
 		logReader: logReader,
+		name:      "fillmaker_" + logReader.GetProductId(),
 	}
+	t.ctx, t.cancel = context.WithCancel(context.Background())
 
 	lastFill, err := mysql.SharedStore(db_account).GetLastFillByProductId(logReader.GetProductId())
 	if err != nil {
@@ -56,6 +62,12 @@ func (t *FillMaker) Start() {
 	}
 	go t.logReader.Run(t.logSeq, t.logOffset)
 	go t.flusher()
+}
+
+func (t *FillMaker) Stop() {
+	t.logReader.Stop()
+	t.cancel()
+	log.Info("stopped", t.name)
 }
 
 func (t *FillMaker) OnMatchLog(log *matching.MatchLog, offset int64) {
@@ -109,9 +121,11 @@ func (t *FillMaker) OnDoneLog(log *matching.DoneLog, offset int64) {
 
 func (t *FillMaker) flusher() {
 	var fills []*models.Fill
-
 	for {
 		select {
+		case <-t.ctx.Done():
+			return
+
 		case fill := <-t.fillCh:
 			fills = append(fills, fill)
 
@@ -122,7 +136,7 @@ func (t *FillMaker) flusher() {
 			for {
 				err := service.AddFills(fills)
 				if err != nil {
-					log.Error(err)
+					log.Error("add fills", err)
 					time.Sleep(time.Second)
 					continue
 				}

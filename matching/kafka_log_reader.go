@@ -26,6 +26,8 @@ type KafkaLogReader struct {
 	productId string
 	reader    *kafka.Reader
 	observer  LogObserver
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 func NewKafkaLogReader(readerId, productId string, brokers []string) LogReader {
@@ -36,7 +38,10 @@ func NewKafkaLogReader(readerId, productId string, brokers []string) LogReader {
 		MinBytes:  1,
 		MaxBytes:  10e6,
 	})
-	return &KafkaLogReader{readerId: readerId, productId: productId, reader: reader}
+
+	rd := &KafkaLogReader{readerId: readerId, productId: productId, reader: reader}
+	rd.ctx, rd.cancel = context.WithCancel(context.Background())
+	return rd
 }
 
 func (r *KafkaLogReader) GetProductId() string {
@@ -45,6 +50,10 @@ func (r *KafkaLogReader) GetProductId() string {
 
 func (r *KafkaLogReader) RegisterObserver(observer LogObserver) {
 	r.observer = observer
+}
+
+func (r *KafkaLogReader) Stop() {
+	r.cancel()
 }
 
 func (r *KafkaLogReader) Run(seq, offset int64) {
@@ -58,8 +67,12 @@ func (r *KafkaLogReader) Run(seq, offset int64) {
 	}
 
 	for {
-		kMessage, err := r.reader.FetchMessage(context.Background())
+		kMessage, err := r.reader.FetchMessage(r.ctx)
 		if err != nil {
+			if err == context.Canceled {
+				r.reader.Close()
+				return
+			}
 			logger.Error(err)
 			continue
 		}
