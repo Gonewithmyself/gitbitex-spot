@@ -8,8 +8,11 @@
 *.dylib
 *.iml
 *.xml
-*。sum
+*.sum
 app
+
+!*.go
+deploy/*
 
 # Test binary, built with `go test -c`
 *.test
