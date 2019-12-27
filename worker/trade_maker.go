@@ -22,7 +22,7 @@ import (
 	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/gitbitex/gitbitex-spot/models/mysql"
 	"github.com/gitbitex/gitbitex-spot/service"
-	"github.com/prometheus/common/log"
+	"github.com/siddontang/go-log/log"
 )
 
 type TradeMaker struct {

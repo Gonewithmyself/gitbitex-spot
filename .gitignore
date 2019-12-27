@@ -11,8 +11,9 @@
 *.sum
 app
 
-!*.go
+
 deploy/*
+!*.go
 
 # Test binary, built with `go test -c`
 *.test
