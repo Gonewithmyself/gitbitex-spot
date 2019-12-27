@@ -19,10 +19,15 @@ import (
 	"github.com/siddontang/go-log/log"
 )
 
+var server *HttpServer
+
 func StartServer() {
 	gbeConfig := conf.GetConfig()
-	httpServer := NewHttpServer(gbeConfig.RestServer.Addr)
-	go httpServer.Start()
-
+	server = NewHttpServer(gbeConfig.RestServer.Addr)
+	go server.Start()
 	log.Info("rest server ok")
+}
+
+func StopServer() {
+	server.Stop()
 }

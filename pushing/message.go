@@ -23,6 +23,14 @@ func (t Channel) Format(productId string, userId int64) string {
 	return fmt.Sprintf("%v:%v:%v", t, productId, userId)
 }
 
+func (t Channel) String() string {
+	return string(t)
+}
+
+func (t Level2Type) String() string {
+	return string(t)
+}
+
 func (t Channel) FormatWithUserId(userId int64) string {
 	return fmt.Sprintf("%v:%v", t, userId)
 }

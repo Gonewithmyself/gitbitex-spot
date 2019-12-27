@@ -8,6 +8,7 @@ import (
 
 	"github.com/gitbitex/gitbitex-spot/conf"
 	"github.com/gitbitex/gitbitex-spot/matching"
+	"github.com/gitbitex/gitbitex-spot/models"
 	"github.com/gitbitex/gitbitex-spot/service"
 	"github.com/gitbitex/gitbitex-spot/worker"
 )
@@ -22,6 +23,8 @@ type Worker interface {
 
 func main() {
 	wg.Add(1)
+
+	go models.NewBinLogStream().Start()
 
 	fill := worker.NewFillExecutor()
 	bill := worker.NewBillExecutor()

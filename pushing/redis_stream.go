@@ -123,4 +123,42 @@ func (s *redisStream) Start() {
 			}
 		}
 	}()
+
+	go func() {
+		for {
+			ps := redisClient.Subscribe(Level2TypeSnapshot.String(), Level2TypeUpdate.String())
+			_, err := ps.Receive()
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+
+			for {
+				select {
+				case msg := <-ps.Channel():
+					if msg.Channel == Level2TypeUpdate.String() {
+						var l2Change Level2Change
+						err := json.Unmarshal([]byte(msg.Payload), &l2Change)
+						if err != nil {
+							continue
+						}
+
+						s.sub.publish(ChannelLevel2.FormatWithProductId(l2Change.ProductId), l2Change)
+					} else {
+						buf, err := utils.ZlibUnmarshal([]byte(msg.Payload))
+						if err != nil {
+							continue
+						}
+						var snapshot OrderBookLevel2Snapshot
+						err = json.Unmarshal(buf, &snapshot)
+						if err != nil {
+							continue
+						}
+						lastLevel2Snapshots.Store(snapshot.ProductId, snapshot)
+					}
+
+				}
+			}
+		}
+	}()
 }

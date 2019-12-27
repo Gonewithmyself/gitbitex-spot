@@ -15,9 +15,13 @@
 package pushing
 
 import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
 	"github.com/gitbitex/gitbitex-spot/conf"
 	"github.com/gitbitex/gitbitex-spot/matching"
 	"github.com/gitbitex/gitbitex-spot/service"
+	"github.com/gorilla/websocket"
 	"github.com/siddontang/go-log/log"
 )
 
@@ -32,13 +36,58 @@ func StartServer() {
 	if err != nil {
 		panic(err)
 	}
+
+	// TODO  get stream isolated?
 	for _, product := range products {
 		newTickerStream(product.Id, sub, matching.NewKafkaLogReader("tickerStream", product.Id, gbeConfig.Kafka.Brokers)).Start()
 		newMatchStream(product.Id, sub, matching.NewKafkaLogReader("matchStream", product.Id, gbeConfig.Kafka.Brokers)).Start()
-		newOrderBookStream(product.Id, sub, matching.NewKafkaLogReader("orderBookStream", product.Id, gbeConfig.Kafka.Brokers)).Start()
 	}
 
 	go NewServer(gbeConfig.PushServer.Addr, gbeConfig.PushServer.Path, sub).Run()
 
 	log.Info("websocket server ok")
+}
+
+type Broker struct {
+	sub *subscription
+}
+
+func NewBroker() *Broker {
+	return &Broker{
+		sub: newSubscription(),
+	}
+}
+
+func (s *Broker) Start() {
+	gbeConfig := conf.GetConfig()
+	products, err := service.GetProducts()
+	if err != nil {
+		panic(err)
+	}
+
+	newRedisStream(s.sub).Start()
+	for _, product := range products {
+		newTickerStream(product.Id, s.sub, matching.NewKafkaLogReader("tickerStream", product.Id, gbeConfig.Kafka.Brokers)).Start()
+		newMatchStream(product.Id, s.sub, matching.NewKafkaLogReader("matchStream", product.Id, gbeConfig.Kafka.Brokers)).Start()
+	}
+}
+
+func (s *Broker) Ws(c *gin.Context) {
+	upGrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+
+	conn, err := upGrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+
+	NewClient(conn, s.sub).startServe()
+}
+
+func (s *Broker) Stop() {
+
 }

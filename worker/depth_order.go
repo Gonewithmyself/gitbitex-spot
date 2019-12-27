@@ -214,7 +214,7 @@ func (s *redisSnapshotStore) publishDepthSnapshot(productId string, snapshot *Or
 		return err
 	}
 
-	return s.redisClient.Publish(orderBookL2SnapshotKeyPrefix+productId, buf).Err()
+	return s.redisClient.Publish(pushing.Level2TypeSnapshot.String(), buf).Err()
 }
 
 func (s *redisSnapshotStore) publishChange(productId string, l2Change *pushing.Level2Change) error {
@@ -223,7 +223,7 @@ func (s *redisSnapshotStore) publishChange(productId string, l2Change *pushing.L
 		return err
 	}
 
-	return s.redisClient.Publish(pushing.ChannelLevel2.FormatWithProductId(productId), buf).Err()
+	return s.redisClient.Publish(pushing.Level2TypeUpdate.String(), buf).Err()
 }
 
 func (s *redisSnapshotStore) getLastLevel2(productId string) (*OrderBookLevel2Snapshot, error) {
