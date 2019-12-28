@@ -104,11 +104,11 @@ func (c *Client) runWriter() {
 		select {
 		case message := <-c.writeCh:
 			// 转发l2change消息，进行增量推送
-			// switch message.(type) {
-			// case *Level2Change:
-			// 	c.l2ChangeCh <- message.(*Level2Change)
-			// 	continue
-			// }
+			switch message.(type) {
+			case *Level2Change:
+				c.l2ChangeCh <- message.(*Level2Change)
+				continue
+			}
 
 			err := c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err != nil {
@@ -168,12 +168,12 @@ func (c *Client) runL2ChangeWriter(ctx context.Context) {
 			state := stateOf(l2Change.ProductId)
 
 			if state.resendSnapshot || l2Change.Seq == 0 {
-				snapshot := getLastLevel2Snapshot(l2Change.ProductId)
-				if snapshot == nil {
+				depth := getLastLevel2Snapshot(l2Change.ProductId)
+				if depth == nil || depth.snapshot == nil {
 					log.Warnf("no snapshot for %v", l2Change.ProductId)
 					continue
 				}
-
+				snapshot := depth.snapshot
 				// 最新的snapshot版本太旧了，丢弃，等待更新的snapshot版本
 				if state.lastSeq > snapshot.Seq {
 					log.Warnf("last snapshot too old: %v changeSeq=%v snapshotSeq=%v",
@@ -190,6 +190,16 @@ func (c *Client) runL2ChangeWriter(ctx context.Context) {
 					Bids:      snapshot.Bids,
 					Asks:      snapshot.Asks,
 				}
+
+				updateMsg := &Level2UpdateMessage{
+					Type:      Level2TypeUpdate,
+					ProductId: l2Change.ProductId,
+				}
+				for _, change := range depth.changes {
+					state.lastSeq = change.Seq
+					updateMsg.Changes = append(updateMsg.Changes, [3]interface{}{change.Side, change.Price, change.Size})
+				}
+				c.writeCh <- updateMsg
 				continue
 			}
 
@@ -267,18 +277,18 @@ func (c *Client) onSub(currencyIds []string, productIds []string, channels []str
 			switch Channel(channel) {
 			case ChannelLevel2:
 				if c.subscribe(ChannelLevel2.FormatWithProductId(productId)) {
-					// if len(c.l2ChangeCh) == 0 {
-					// 	c.l2ChangeCh <- &Level2Change{ProductId: productId}
-					// }
-					snapshot := getLastLevel2Snapshot(productId)
-					if snapshot != nil {
-						c.writeCh <- &Level2SnapshotMessage{
-							Type:      Level2TypeSnapshot,
-							ProductId: productId,
-							Bids:      snapshot.Bids,
-							Asks:      snapshot.Asks,
-						}
+					if len(c.l2ChangeCh) == 0 {
+						c.l2ChangeCh <- &Level2Change{ProductId: productId}
 					}
+					// snapshot := getLastLevel2Snapshot(productId)
+					// if snapshot != nil {
+					// 	c.writeCh <- &Level2SnapshotMessage{
+					// 		Type:      Level2TypeSnapshot,
+					// 		ProductId: productId,
+					// 		Bids:      snapshot.Bids,
+					// 		Asks:      snapshot.Asks,
+					// 	}
+					// }
 
 				}
 

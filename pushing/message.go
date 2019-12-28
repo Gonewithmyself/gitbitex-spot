@@ -78,6 +78,11 @@ type Level2UpdateMessage struct {
 	Changes   [][3]interface{} `json:"changes"` // ["buy", "6500.09", "0.84702376"],
 }
 
+type localDepth struct {
+	snapshot *OrderBookLevel2Snapshot
+	changes  []Level2Change
+}
+
 type Level2Change struct {
 	Seq       int64
 	ProductId string

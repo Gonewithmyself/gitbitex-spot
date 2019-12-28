@@ -14,7 +14,6 @@ import (
 	"github.com/gitbitex/gitbitex-spot/utils"
 	"github.com/go-redis/redis"
 	"github.com/shopspring/decimal"
-	"github.com/siddontang/go-log/log"
 )
 
 const (
@@ -215,7 +214,6 @@ func (s *redisSnapshotStore) publishDepthSnapshot(productId string, snapshot *Or
 		return err
 	}
 
-	log.Info("publish snap....")
 	return s.redisClient.Publish(pushing.Level2TypeSnapshot.String(), buf).Err()
 }
 
@@ -225,7 +223,6 @@ func (s *redisSnapshotStore) publishChange(productId string, l2Change *pushing.L
 		return err
 	}
 
-	log.Info("publish change....")
 	return s.redisClient.Publish(pushing.Level2TypeUpdate.String(), buf).Err()
 }
 

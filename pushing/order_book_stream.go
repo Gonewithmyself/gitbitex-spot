@@ -167,10 +167,10 @@ func (s *OrderBookStream) runSnapshots() {
 
 var lastLevel2Snapshots = sync.Map{}
 
-func getLastLevel2Snapshot(productId string) *OrderBookLevel2Snapshot {
+func getLastLevel2Snapshot(productId string) *localDepth {
 	snapshot, found := lastLevel2Snapshots.Load(productId)
 	if !found {
 		return nil
 	}
-	return snapshot.(*OrderBookLevel2Snapshot)
+	return snapshot.(*localDepth)
 }
