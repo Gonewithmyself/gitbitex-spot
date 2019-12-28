@@ -68,6 +68,7 @@ func (server *HttpServer) Start() {
 
 	// ws
 	ws := pushing.NewBroker()
+	ws.Start()
 	r.GET("/ws", ws.Ws)
 
 	private := r.Group("/", checkToken())

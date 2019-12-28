@@ -270,8 +270,16 @@ func (c *Client) onSub(currencyIds []string, productIds []string, channels []str
 					// if len(c.l2ChangeCh) == 0 {
 					// 	c.l2ChangeCh <- &Level2Change{ProductId: productId}
 					// }
+					snapshot := getLastLevel2Snapshot(productId)
+					if snapshot != nil {
+						c.writeCh <- &Level2SnapshotMessage{
+							Type:      Level2TypeSnapshot,
+							ProductId: productId,
+							Bids:      snapshot.Bids,
+							Asks:      snapshot.Asks,
+						}
+					}
 
-					c.writeCh <- getLastLevel2Snapshot(productId)
 				}
 
 			case ChannelMatch:

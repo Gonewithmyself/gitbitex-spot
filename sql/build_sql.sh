@@ -24,7 +24,7 @@ clear_db(){
     mysql $conn_str -e "drop database IF EXISTS db_account"
 }
 
-if [ $1 == "clean" ]; then
+if [ "$1" == "clean" ]; then
     echo "clean..."
     clear_db
 else

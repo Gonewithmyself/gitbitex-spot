@@ -136,6 +136,7 @@ func (s *redisStream) Start() {
 			for {
 				select {
 				case msg := <-ps.Channel():
+					log.Info("recv...", msg.Channel)
 					if msg.Channel == Level2TypeUpdate.String() {
 						var l2Change Level2Change
 						err := json.Unmarshal([]byte(msg.Payload), &l2Change)
@@ -143,7 +144,13 @@ func (s *redisStream) Start() {
 							continue
 						}
 
-						s.sub.publish(ChannelLevel2.FormatWithProductId(l2Change.ProductId), l2Change)
+						update := &Level2UpdateMessage{
+							Type:      Level2TypeUpdate,
+							ProductId: l2Change.ProductId,
+							Changes: [][3]interface{}{
+								[3]interface{}{l2Change.Side, l2Change.Price, l2Change.Size}},
+						}
+						s.sub.publish(ChannelLevel2.FormatWithProductId(l2Change.ProductId), update)
 					} else {
 						buf, err := utils.ZlibUnmarshal([]byte(msg.Payload))
 						if err != nil {
@@ -154,7 +161,7 @@ func (s *redisStream) Start() {
 						if err != nil {
 							continue
 						}
-						lastLevel2Snapshots.Store(snapshot.ProductId, snapshot)
+						lastLevel2Snapshots.Store(snapshot.ProductId, &snapshot)
 					}
 
 				}
